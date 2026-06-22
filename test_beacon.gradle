@@ -1,0 +1,16 @@
+rootProject {
+    task dumpBeaconMethods {
+        doLast {
+            try {
+                def classLoader = Thread.currentThread().getContextClassLoader()
+                def clazz = Class.forName("net.minecraft.client.renderer.blockentity.BeaconRenderer", false, classLoader)
+                println "====== BEACON METHODS ======"
+                clazz.getMethods().each { method ->
+                    println(method.getName() + " : " + java.util.Arrays.toString(method.getParameterTypes()))
+                }
+            } catch (Exception e) {
+                e.printStackTrace()
+            }
+        }
+    }
+}

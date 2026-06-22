@@ -1,0 +1,11 @@
+tasks.register("printWRC") {
+    dependsOn compileClientJava
+    doLast {
+        def urls = sourceSets.client.compileClasspath.files.collect { it.toURI().toURL() } as java.net.URL[]
+        def cl = new java.net.URLClassLoader(urls, Thread.currentThread().getContextClassLoader())
+        def clazz = Class.forName("net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext", false, cl)
+        clazz.getMethods().each { method ->
+            println "METHOD: " + method.toString()
+        }
+    }
+}

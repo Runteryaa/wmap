@@ -79,4 +79,4 @@ publishing {
 		// retrieving dependencies.
 	}
 }
-apply from: 'print_methods.gradle'
+apply from: 'print_wrc.gradle'

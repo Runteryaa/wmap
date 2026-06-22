@@ -1,15 +1,13 @@
-task printScreenMethods {
+tasks.register("printBeacon") {
+    dependsOn compileJava
     doLast {
-        try {
-            def clazz = Class.forName("net.minecraft.client.gui.screens.Screen", false, Thread.currentThread().getContextClassLoader())
-            println "====== SCREEN METHODS ======"
-            clazz.getMethods().each { method ->
-                if (method.getName().toLowerCase().contains("mouse") || method.getName().toLowerCase().contains("render")) {
-                    println(method.getName() + " : " + java.util.Arrays.toString(method.getParameterTypes()))
-                }
+        def urls = sourceSets.main.compileClasspath.files.collect { it.toURI().toURL() } as java.net.URL[]
+        def cl = new java.net.URLClassLoader(urls, Thread.currentThread().getContextClassLoader())
+        def clazz = Class.forName("net.minecraft.client.renderer.blockentity.BeaconRenderer", false, cl)
+        clazz.getMethods().each { method ->
+            if (method.name == "renderBeaconBeam") {
+                println "SIGNATURE: " + method.toString()
             }
-        } catch (Exception e) {
-            e.printStackTrace()
         }
     }
 }

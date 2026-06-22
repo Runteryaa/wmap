@@ -67,19 +67,25 @@ public class WorldMapClient implements ClientModInitializer {
                 }
             }
 
-            // Waypoint Particle Beam (Vanilla aesthetic)
-            if (client.level != null && client.player != null && client.player.tickCount % 2 == 0) {
+        });
+
+        // Waypoint Particle Beam (Vanilla aesthetic)
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.level != null && client.player != null) {
                 String currentDim = client.level.dimension().identifier().toString();
                 for (Waypoint wp : WaypointManager.getWaypoints()) {
                     if (wp.getDimension().equals(currentDim)) {
                         double distSq = client.player.distanceToSqr(wp.getX(), client.player.getY(), wp.getZ());
                         if (distSq < 16384) { // Render beam if within ~128 blocks
-                            // Spawn a glowing vertical beam
-                            for (int i = 0; i < 20; i++) {
+                            int color = wp.getColor() | 0xFF000000;
+                            net.minecraft.core.particles.DustParticleOptions options = new net.minecraft.core.particles.DustParticleOptions(color, 2.0f);
+                            
+                            // Spawn a solid vertical beam (optimized particle count)
+                            for (int i = 0; i < 10; i++) {
                                 client.level.addParticle(
-                                    net.minecraft.core.particles.ParticleTypes.END_ROD,
+                                    options,
                                     wp.getX() + 0.5,
-                                    wp.getY() + (i * 2) + (client.player.tickCount % 20) / 10.0,
+                                    wp.getY() + (i * 4) + (client.player.tickCount % 20) / 5.0,
                                     wp.getZ() + 0.5,
                                     0, 0.05, 0
                                 );
@@ -90,40 +96,34 @@ public class WorldMapClient implements ClientModInitializer {
             }
         });
 
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            // Determine which server/world we joined and load cached map data
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, cl) -> {
             ClientMapStorage.setCurrentServer();
-            client.execute(() -> {
+            cl.execute(() -> {
                 ClientMapManager.clear();
-                // Load previously saved map data for this server from client disk
                 ClientMapStorage.loadAllIntoManager();
             });
-
-            // If the server also has our mod, request live updates
-            if (ClientPlayNetworking.canSend(HandshakePayload.ID)) {
-                ClientPlayNetworking.send(new HandshakePayload());
+            if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(HandshakePayload.ID)) {
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new HandshakePayload());
             }
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            // Clear in-memory data; disk data persists for next session
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, cl) -> {
             ClientMapManager.clear();
             ClientMapStorage.clearCurrentServer();
         });
 
-        ClientPlayNetworking.registerGlobalReceiver(MapUpdatePayload.ID, (payload, context) -> {
-            context.client().execute(() -> {
-                // Update in-memory display
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(MapUpdatePayload.ID, (payload, ctx) -> {
+            ctx.client().execute(() -> {
                 ClientMapManager.receiveUpdate(payload.chunkX(), payload.chunkZ(), payload.colors());
-                // Also persist to client disk for offline/future use
                 ClientMapStorage.saveChunk(payload.chunkX(), payload.chunkZ(), payload.colors());
             });
         });
 
-        ClientPlayNetworking.registerGlobalReceiver(PlayerPosPayload.ID, (payload, context) -> {
-            context.client().execute(() -> {
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(PlayerPosPayload.ID, (payload, ctx) -> {
+            ctx.client().execute(() -> {
                 ClientMapManager.updatePlayerPositions(payload.positions());
             });
         });
     }
 }
+

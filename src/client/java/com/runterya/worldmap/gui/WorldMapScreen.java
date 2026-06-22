@@ -2,7 +2,7 @@ package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -30,7 +30,7 @@ public class WorldMapScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
         int centerX = this.width / 2;
@@ -113,17 +113,18 @@ public class WorldMapScreen extends Screen {
             graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
             graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
             
-            // Draw name centered above
-            String name = wp.getName();
-            int textWidth = font.width(name);
-            // graphics.drawString(font, net.minecraft.network.chat.Component.literal(name), sx - textWidth / 2, sy - 14, wp.getColor() | 0xFF000000, true);
+            // Draw name centered above if hovered
+            if (mouseX >= sx - 4 && mouseX <= sx + 4 && mouseY >= sy - 4 && mouseY <= sy + 4) {
+                String name = wp.getName();
+                graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
+            }
         }
 
         // Draw mouse coordinates
         double mouseWorldX = (mouseX - centerX) / scale - panX;
         double mouseWorldZ = (mouseY - centerY) / scale - panY;
         String coordText = String.format("X: %d, Z: %d", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
-        // graphics.drawString(font, net.minecraft.network.chat.Component.literal(coordText), 5, 5, 0xFFFFFF, true);
+        graphics.text(font, coordText, 5, 5, 0xFFFFFF, true);
     }
 
     @Override
