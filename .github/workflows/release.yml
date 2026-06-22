@@ -59,7 +59,7 @@ jobs:
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           name: Release ${{ steps.get_version.outputs.version }}
           version: ${{ steps.get_version.outputs.version }}
-          version-type: beta
+          version-type: alpha
           changelog-file: CHANGELOG.md
           loaders: fabric
           game-versions: |
