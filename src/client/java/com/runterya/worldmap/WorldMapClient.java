@@ -80,12 +80,15 @@ public class WorldMapClient implements ClientModInitializer {
                             int color = wp.getColor() | 0xFF000000;
                             net.minecraft.core.particles.DustParticleOptions options = new net.minecraft.core.particles.DustParticleOptions(color, 2.0f);
                             
-                            // Spawn a solid vertical beam
-                            for (int i = 0; i < 10; i++) {
+                            // Spawn a solid vertical beam around the player's Y level
+                            double startY = Math.max(client.level.getMinY(), client.player.getY() - 64);
+                            double endY = Math.min(client.level.getMaxY(), client.player.getY() + 64);
+                            
+                            for (double y = startY; y <= endY; y += 4.0) {
                                 client.level.addParticle(
                                     options,
                                     wp.getX() + 0.5,
-                                    wp.getY() + (i * 4) + (client.player.tickCount % 20) / 5.0,
+                                    y + (client.player.tickCount % 20) / 5.0,
                                     wp.getZ() + 0.5,
                                     0, 0.05, 0
                                 );
