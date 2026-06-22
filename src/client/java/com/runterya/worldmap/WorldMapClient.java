@@ -69,7 +69,66 @@ public class WorldMapClient implements ClientModInitializer {
 
         });
 
-        // Waypoint Beams are now rendered using a Mixin on LevelRenderer (LevelRendererMixin)
+        // Waypoint Particle Beam
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.level != null && client.player != null) {
+                String currentDim = client.level.dimension().identifier().toString();
+                for (Waypoint wp : WaypointManager.getWaypoints()) {
+                    if (wp.getDimension().equals(currentDim)) {
+                        double distSq = client.player.distanceToSqr(wp.getX(), client.player.getY(), wp.getZ());
+                        if (distSq < 16384) { // Render beam if within ~128 blocks
+                            int color = wp.getColor() | 0xFF000000;
+                            net.minecraft.core.particles.DustParticleOptions options = new net.minecraft.core.particles.DustParticleOptions(color, 2.0f);
+                            
+                            // Spawn a solid vertical beam
+                            for (int i = 0; i < 10; i++) {
+                                client.level.addParticle(
+                                    options,
+                                    wp.getX() + 0.5,
+                                    wp.getY() + (i * 4) + (client.player.tickCount % 20) / 5.0,
+                                    wp.getZ() + 0.5,
+                                    0, 0.05, 0
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // HUD Text when looking at beam
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.level == null || client.player == null) return;
+            
+            String currentDim = client.level.dimension().identifier().toString();
+            net.minecraft.world.phys.Vec3 look = client.player.getViewVector(1.0f);
+            
+            // Normalize look vector on XZ plane
+            double lookLen = Math.sqrt(look.x * look.x + look.z * look.z);
+            if (lookLen < 0.01) return; // Looking straight up or down
+            double lookX = look.x / lookLen;
+            double lookZ = look.z / lookLen;
+            
+            for (Waypoint wp : WaypointManager.getWaypoints()) {
+                if (!wp.getDimension().equals(currentDim)) continue;
+                
+                double dx = wp.getX() + 0.5 - client.player.getX();
+                double dz = wp.getZ() + 0.5 - client.player.getZ();
+                double distXZ = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distXZ > 0.1 && distXZ < 128.0) { // Within 128 blocks
+                    double dirX = dx / distXZ;
+                    double dirZ = dz / distXZ;
+                    
+                    double dot = lookX * dirX + lookZ * dirZ;
+                    
+                    // If looking closely at the vertical column
+                    if (dot > 0.99) {
+                        client.gui.setOverlayMessage(net.minecraft.network.chat.Component.literal("Waypoint: " + wp.getName()).withStyle(net.minecraft.ChatFormatting.GOLD), false);
+                    }
+                }
+            }
+        });
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, cl) -> {
             ClientMapStorage.setCurrentServer();
