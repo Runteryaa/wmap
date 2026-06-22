@@ -1,0 +1,15 @@
+task printScreenMethods {
+    doLast {
+        try {
+            def clazz = Class.forName("net.minecraft.client.gui.screens.Screen", false, Thread.currentThread().getContextClassLoader())
+            println "====== SCREEN METHODS ======"
+            clazz.getMethods().each { method ->
+                if (method.getName().toLowerCase().contains("mouse") || method.getName().toLowerCase().contains("render")) {
+                    println(method.getName() + " : " + java.util.Arrays.toString(method.getParameterTypes()))
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace()
+        }
+    }
+}

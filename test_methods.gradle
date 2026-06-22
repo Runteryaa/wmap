@@ -1,0 +1,13 @@
+task printCollectorMethods {
+    doLast {
+        try {
+            def clazz = Class.forName("net.minecraft.client.gui.ActiveTextCollector", false, Thread.currentThread().getContextClassLoader())
+            println "====== ActiveTextCollector METHODS ======"
+            clazz.getMethods().each { method ->
+                println(method.getName() + " : " + java.util.Arrays.toString(method.getParameterTypes()))
+            }
+        } catch (Exception e) {
+            e.printStackTrace()
+        }
+    }
+}

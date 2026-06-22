@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "worldmap",
+  "version": "${version}",
+  "name": "WorldMap",
+  "description": "A vanilla world map with waypoint support.",
+  "authors": [
+    "Runterya"
+  ],
+  "contact": {
+    "homepage": "https://fabricmc.net/",
+    "sources": "https://github.com/Runteryaa/worldmap"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/worldmap/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.runterya.worldmap.WorldMapMod"
+    ],
+    "client": [
+      "com.runterya.worldmap.WorldMapClient"
+    ]
+  },
+  "mixins": [
+    "worldmap.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~26.1.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "another-mod": "*"
+  }
+}

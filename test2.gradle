@@ -1,0 +1,18 @@
+rootProject {
+    task dumpFontMethods {
+        doLast {
+            try {
+                def classLoader = Thread.currentThread().getContextClassLoader()
+                def clazz = Class.forName("net.minecraft.client.gui.Font", false, classLoader)
+                println "====== FONT METHODS ======"
+                clazz.getMethods().each { method ->
+                    if (method.getName().contains("draw")) {
+                        println(method.getName() + " : " + java.util.Arrays.toString(method.getParameterTypes()))
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace()
+            }
+        }
+    }
+}
