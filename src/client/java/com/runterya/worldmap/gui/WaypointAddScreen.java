@@ -28,6 +28,8 @@ public class WaypointAddScreen extends Screen {
     private EditBox xField;
     private EditBox yField;
     private EditBox zField;
+    private EditBox colorField;
+    private int currentColor;
 
     @Override
     protected void init() {
@@ -52,8 +54,19 @@ public class WaypointAddScreen extends Screen {
         this.zField.setValue(String.valueOf(this.z));
         this.addRenderableWidget(this.zField);
 
+        this.currentColor = new Random().nextInt(0xFFFFFF);
+        this.colorField = new EditBox(this.font, centerX - 100, centerY - 20, 60, 20, Component.literal("Color"));
+        this.colorField.setValue(String.format("%06X", this.currentColor));
+        this.colorField.setMaxLength(6);
+        this.colorField.setResponder(text -> {
+            try {
+                this.currentColor = Integer.parseInt(text, 16);
+            } catch (Exception ignored) {}
+        });
+        this.addRenderableWidget(this.colorField);
+
         this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> {
-            int color = 0xFF000000 | new Random().nextInt(0xFFFFFF);
+            int color = 0xFF000000 | this.currentColor;
             int finalX = this.x;
             int finalY = this.y;
             int finalZ = this.z;
@@ -67,11 +80,24 @@ public class WaypointAddScreen extends Screen {
                 this.minecraft.player.sendSystemMessage(Component.literal("Waypoint added!"));
             }
             this.minecraft.setScreen(this.parent);
-        }).bounds(centerX - 100, centerY - 10, 98, 20).build());
+        }).bounds(centerX - 100, centerY + 20, 98, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> {
             this.minecraft.setScreen(this.parent);
-        }).bounds(centerX + 2, centerY - 10, 98, 20).build());
+        }).bounds(centerX + 2, centerY + 20, 98, 20).build());
+    }
+
+    @Override
+    public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTicks) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTicks);
+        
+        int centerX = this.width / 2;
+        int centerY = this.height / 2;
+        
+        // Draw color preview box
+        int boxX = centerX - 30;
+        int boxY = centerY - 20;
+        graphics.fill(boxX, boxY, boxX + 20, boxY + 20, 0xFF000000 | this.currentColor);
     }
 
     @Override
