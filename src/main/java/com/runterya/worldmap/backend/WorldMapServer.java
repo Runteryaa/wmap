@@ -13,6 +13,18 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.Reader;
+import java.io.Writer;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
+import com.runterya.worldmap.network.AddGlobalWaypointPayload;
+import com.runterya.worldmap.network.SyncGlobalWaypointsPayload;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +40,10 @@ public class WorldMapServer {
     public static final Set<UUID> MODDED_PLAYERS = ConcurrentHashMap.newKeySet();
     public static MapStorage storage;
     private static int tickCount = 0;
+    
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static File globalWaypointsFile;
+    private static final List<SyncGlobalWaypointsPayload.GlobalWaypoint> globalWaypoints = new ArrayList<>();
 
     /** How many chunk extractions to process per server tick (avoids freeze). */
     private static final int CHUNKS_PER_TICK = 8;
@@ -61,24 +77,46 @@ public class WorldMapServer {
 
     public static void init() {
         ServerPlayNetworking.registerGlobalReceiver(com.runterya.worldmap.network.HandshakePayload.ID, (payload, context) -> {
-            MODDED_PLAYERS.add(context.player().getUUID());
-            ServerPlayer player = context.player();
+            context.server().execute(() -> {
+                MODDED_PLAYERS.add(context.player().getUUID());
+                ServerPlayer player = context.player();
 
-            // Send saved disk data immediately (fast, no extraction needed)
-            if (storage != null) {
-                player.getChunkTrackingView().forEach(chunkPos -> {
-                    int cx = chunkPos.getMinBlockX() >> 4;
-                    int cz = chunkPos.getMinBlockZ() >> 4;
-                    int[] saved = storage.getChunk(cx, cz);
-                    if (saved != null) {
-                        ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
+                // Send saved disk data immediately (fast, no extraction needed)
+                if (storage != null) {
+                    player.getChunkTrackingView().forEach(chunkPos -> {
+                        int cx = chunkPos.getMinBlockX() >> 4;
+                        int cz = chunkPos.getMinBlockZ() >> 4;
+                        int[] saved = storage.getChunk(cx, cz);
+                        if (saved != null) {
+                            ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
+                        }
+                    });
+                }
+
+                // Queue fresh extraction of all chunks in view (spread over multiple ticks)
+                enqueuePlayerView(player, ChunkTrackingView.EMPTY, player.getChunkTrackingView());
+                lastChunkView.put(player.getUUID(), player.getChunkTrackingView());
+                
+                // Sync global waypoints
+                ServerPlayNetworking.send(player, new SyncGlobalWaypointsPayload(globalWaypoints));
+            });
+        });
+
+        ServerPlayNetworking.registerGlobalReceiver(AddGlobalWaypointPayload.ID, (payload, context) -> {
+            context.server().execute(() -> {
+                SyncGlobalWaypointsPayload.GlobalWaypoint wp = new SyncGlobalWaypointsPayload.GlobalWaypoint(
+                    payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
+                );
+                globalWaypoints.add(wp);
+                saveGlobalWaypoints();
+                
+                SyncGlobalWaypointsPayload syncPayload = new SyncGlobalWaypointsPayload(List.of(wp)); // sending just the new one
+                for (ServerPlayer player : context.server().getPlayerList().getPlayers()) {
+                    if (MODDED_PLAYERS.contains(player.getUUID())) {
+                        ServerPlayNetworking.send(player, syncPayload);
                     }
-                });
-            }
-
-            // Queue fresh extraction of all chunks in view (spread over multiple ticks)
-            enqueuePlayerView(player, ChunkTrackingView.EMPTY, player.getChunkTrackingView());
-            lastChunkView.put(player.getUUID(), player.getChunkTrackingView());
+                }
+            });
         });
 
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
@@ -89,6 +127,9 @@ public class WorldMapServer {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
+            
+            globalWaypointsFile = worldDir.resolve("worldmap").resolve("global_waypoints.json").toFile();
+            loadGlobalWaypoints();
         });
 
         ServerTickEvents.END_SERVER_TICK.register(WorldMapServer::tick);
@@ -106,6 +147,31 @@ public class WorldMapServer {
             },
             chunkPos -> {}
         );
+    }
+
+    private static void loadGlobalWaypoints() {
+        if (globalWaypointsFile != null && globalWaypointsFile.exists()) {
+            try (Reader reader = new FileReader(globalWaypointsFile)) {
+                Type listType = new TypeToken<ArrayList<SyncGlobalWaypointsPayload.GlobalWaypoint>>(){}.getType();
+                List<SyncGlobalWaypointsPayload.GlobalWaypoint> loaded = GSON.fromJson(reader, listType);
+                if (loaded != null) {
+                    globalWaypoints.clear();
+                    globalWaypoints.addAll(loaded);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void saveGlobalWaypoints() {
+        if (globalWaypointsFile != null) {
+            try (Writer writer = new FileWriter(globalWaypointsFile)) {
+                GSON.toJson(globalWaypoints, writer);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**

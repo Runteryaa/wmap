@@ -7,14 +7,16 @@ public class Waypoint {
     private int z;
     private int color; // ARGB
     private String dimension;
+    private boolean isGlobal;
 
-    public Waypoint(String name, int x, int y, int z, int color, String dimension) {
+    public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal) {
         this.name = name;
         this.x = x;
         this.y = y;
         this.z = z;
         this.color = color;
         this.dimension = dimension;
+        this.isGlobal = isGlobal;
     }
 
     public String getName() { return name; }
@@ -23,4 +25,5 @@ public class Waypoint {
     public int getZ() { return z; }
     public int getColor() { return color; }
     public String getDimension() { return dimension; }
+    public boolean isGlobal() { return isGlobal; }
 }

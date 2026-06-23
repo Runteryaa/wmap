@@ -31,6 +31,7 @@ public class WaypointAddScreen extends Screen {
     private EditBox colorField;
     private int currentColor;
     private boolean showColorWheel = false;
+    private boolean isGlobal = false;
     private static final net.minecraft.resources.Identifier COLOR_WHEEL = net.minecraft.resources.Identifier.fromNamespaceAndPath("worldmap", "textures/gui/color_wheel.png");
 
     @Override
@@ -67,6 +68,11 @@ public class WaypointAddScreen extends Screen {
         });
         this.addRenderableWidget(this.colorField);
 
+        this.addRenderableWidget(Button.builder(Component.literal("Type: Local"), button -> {
+            this.isGlobal = !this.isGlobal;
+            button.setMessage(Component.literal("Type: " + (this.isGlobal ? "Global" : "Local")));
+        }).bounds(centerX + 10, centerY - 20, 90, 20).build());
+
         this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> {
             int color = 0xFF000000 | this.currentColor;
             int finalX = this.x;
@@ -76,7 +82,7 @@ public class WaypointAddScreen extends Screen {
             try { finalY = Integer.parseInt(this.yField.getValue()); } catch (Exception ignored) {}
             try { finalZ = Integer.parseInt(this.zField.getValue()); } catch (Exception ignored) {}
 
-            Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension);
+            Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension, this.isGlobal);
             WaypointManager.addWaypoint(wp);
             if (this.minecraft != null && this.minecraft.player != null) {
                 this.minecraft.player.sendSystemMessage(Component.literal("Waypoint added!"));
@@ -89,11 +95,19 @@ public class WaypointAddScreen extends Screen {
         }).bounds(centerX + 2, centerY + 20, 98, 20).build());
     }
 
+    private long lastClickTime = 0;
+
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean isDouble) {
-        double mouseX = event.x();
-        double mouseY = event.y();
+        double scale = this.minecraft.getWindow().getGuiScale();
+        double mouseX = this.minecraft.mouseHandler.xpos() / scale;
+        double mouseY = this.minecraft.mouseHandler.ypos() / scale;
         int button = event.button();
+        
+        long time = System.currentTimeMillis();
+        if (time - this.lastClickTime < 200) {
+            return false;
+        }
         
         int centerX = this.width / 2;
         int centerY = this.height / 2;
@@ -104,25 +118,29 @@ public class WaypointAddScreen extends Screen {
             // Check if clicked on color preview box
             if (mouseX >= boxX && mouseX <= boxX + 20 && mouseY >= boxY && mouseY <= boxY + 20) {
                 this.showColorWheel = !this.showColorWheel;
+                this.lastClickTime = time;
                 return true;
             }
 
             // Check if clicked inside color wheel
             if (this.showColorWheel) {
+                int wheelSize = 80;
+                int wheelHalf = wheelSize / 2;
                 int wheelX = centerX + 10;
-                int wheelY = centerY - 64;
-                if (mouseX >= wheelX && mouseX <= wheelX + 128 && mouseY >= wheelY && mouseY <= wheelY + 128) {
-                    double dx = mouseX - (wheelX + 64);
-                    double dy = mouseY - (wheelY + 64);
+                int wheelY = centerY - wheelHalf;
+                if (mouseX >= wheelX && mouseX <= wheelX + wheelSize && mouseY >= wheelY && mouseY <= wheelY + wheelSize) {
+                    double dx = mouseX - (wheelX + wheelHalf);
+                    double dy = mouseY - (wheelY + wheelHalf);
                     double dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist <= 64) {
+                    if (dist <= wheelHalf) {
                         double angle = Math.atan2(dy, dx);
                         float hue = (float) (angle / (2 * Math.PI));
                         if (hue < 0) hue += 1.0f;
-                        float saturation = (float) (dist / 64.0);
+                        float saturation = (float) (dist / (double)wheelHalf);
                         
                         this.currentColor = java.awt.Color.HSBtoRGB(hue, saturation, 1.0f) & 0xFFFFFF;
                         this.colorField.setValue(String.format("%06X", this.currentColor));
+                        this.lastClickTime = time;
                         return true;
                     }
                 }
@@ -144,17 +162,21 @@ public class WaypointAddScreen extends Screen {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
         
+        // Draw Color Wheel if enabled
+        if (this.showColorWheel) {
+                int wheelSize = 80;
+                int wheelHalf = wheelSize / 2;
+                int wheelX = centerX + 10;
+                int wheelY = centerY - wheelHalf;
+                graphics.blit(COLOR_WHEEL, wheelX, wheelY, wheelX + wheelSize, wheelY + wheelSize, 0.0f, 1.0f, 0.0f, 1.0f);
+        }
+
         // Draw color preview box
         int boxX = centerX - 30;
         int boxY = centerY - 20;
-        graphics.fill(boxX, boxY, boxX + 20, boxY + 20, 0xFF000000 | this.currentColor);
-
-        // Draw Color Wheel if enabled
-        if (this.showColorWheel) {
-            int wheelX = centerX + 10;
-            int wheelY = centerY - 64;
-            graphics.blit(COLOR_WHEEL, wheelX, wheelY, 0, 0, 128, 128, 128, 128);
-        }
+        graphics.fill(boxX - 1, boxY - 1, boxX + 21, boxY + 21, 0xFFA0A0A0); // Light gray border
+        graphics.fill(boxX, boxY, boxX + 20, boxY + 20, 0xFF000000); // Black border
+        graphics.fill(boxX + 1, boxY + 1, boxX + 19, boxY + 19, 0xFF000000 | this.currentColor); // Color
     }
 
     @Override

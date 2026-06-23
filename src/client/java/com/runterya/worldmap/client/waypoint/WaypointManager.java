@@ -14,6 +14,7 @@ public class WaypointManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File WAYPOINTS_FILE = new File(FabricLoader.getInstance().getConfigDir().toFile(), "worldmap_waypoints.json");
     private static List<Waypoint> waypoints = new ArrayList<>();
+    private static List<Waypoint> globalWaypoints = new ArrayList<>();
 
     public static void load() {
         if (WAYPOINTS_FILE.exists()) {
@@ -38,16 +39,36 @@ public class WaypointManager {
     }
 
     public static void addWaypoint(Waypoint wp) {
-        waypoints.add(wp);
-        save();
+        if (wp.isGlobal()) {
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new com.runterya.worldmap.network.AddGlobalWaypointPayload(
+                wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(), wp.getDimension()
+            ));
+        } else {
+            waypoints.add(wp);
+            save();
+        }
     }
 
     public static void removeWaypoint(Waypoint wp) {
-        waypoints.remove(wp);
-        save();
+        if (wp.isGlobal()) {
+            // Removing global waypoints is not supported yet
+        } else {
+            waypoints.remove(wp);
+            save();
+        }
+    }
+
+    public static void addGlobalWaypoint(Waypoint wp) {
+        globalWaypoints.add(wp);
+    }
+    
+    public static void clearGlobalWaypoints() {
+        globalWaypoints.clear();
     }
 
     public static List<Waypoint> getWaypoints() {
-        return waypoints;
+        List<Waypoint> all = new ArrayList<>(waypoints);
+        all.addAll(globalWaypoints);
+        return all;
     }
 }
