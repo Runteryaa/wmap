@@ -82,15 +82,3 @@ jobs:
           body_path: CHANGELOG.md
           files: build/libs/*.jar
           generate_release_notes: false
-      - name: Publish Minecraft 26.1.2 file to Modrinth
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
-          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.1.2
-          version: ${{ steps.get_version.outputs.version }}-mc26.1.2
-          version-type: alpha
-          changelog-file: CHANGELOG.md
-          loaders: fabric
-          game-versions: 26.1.2
-          files: build/libs/*+mc26.1.2.jar

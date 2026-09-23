@@ -34,8 +34,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class WorldMapServer {
     public static final Set<UUID> MODDED_PLAYERS = ConcurrentHashMap.newKeySet();
@@ -56,14 +54,6 @@ public class WorldMapServer {
         return t;
     });
 
-    /** Background thread pool for CPU-intensive chunk extraction. */
-    private static final ExecutorService extractionExecutor = Executors.newFixedThreadPool(Math.max(1, Runtime.getRuntime().availableProcessors() / 2), r -> {
-        Thread t = new Thread(r, "worldmap-extractor");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY); // Prevent stealing CPU from main game loop
-        return t;
-    });
-
     /** Queue of pending chunk sends: [player UUID, chunkX, chunkZ] */
     private record ChunkTask(UUID playerUUID, int cx, int cz) {}
     private static final Queue<ChunkTask> chunkQueue = new ConcurrentLinkedQueue<>();
@@ -73,6 +63,13 @@ public class WorldMapServer {
 
     /** Track chunks that had block updates and need extraction & broadcast. */
     private static final Set<LevelChunk> dirtyChunks = ConcurrentHashMap.newKeySet();
+
+    /** Chunks for which a client has supplied the biome-aware vanilla tint. */
+    private static final Set<Long> clientTintedChunks = ConcurrentHashMap.newKeySet();
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+    }
 
 
 
@@ -84,6 +81,7 @@ public class WorldMapServer {
                 }
                 // Client biome color resources are authoritative for map tinting;
                 // persist and share the vanilla-resolved colors it reports.
+                clientTintedChunks.add(chunkKey(payload.chunkX(), payload.chunkZ()));
                 broadcastMapUpdate(context.server(), payload.chunkX(), payload.chunkZ(), payload.colors());
             });
         });
@@ -93,19 +91,7 @@ public class WorldMapServer {
                 MODDED_PLAYERS.add(context.player().getUUID());
                 ServerPlayer player = context.player();
 
-                // Send saved disk data immediately (fast, no extraction needed)
-                if (storage != null) {
-                    player.getChunkTrackingView().forEach(chunkPos -> {
-                        int cx = chunkPos.getMinBlockX() >> 4;
-                        int cz = chunkPos.getMinBlockZ() >> 4;
-                        int[] saved = storage.getChunk(cx, cz);
-                        if (saved != null) {
-                            ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
-                        }
-                    });
-                }
-
-                // Queue fresh extraction of all chunks in view (spread over multiple ticks)
+                // Send saved data where available; extract only chunks not yet mapped.
                 enqueuePlayerView(player, ChunkTrackingView.EMPTY, player.getChunkTrackingView());
                 lastChunkView.put(player.getUUID(), player.getChunkTrackingView());
                 
@@ -137,6 +123,10 @@ public class WorldMapServer {
         });
 
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+            clientTintedChunks.clear();
+            dirtyChunks.clear();
+            chunkQueue.clear();
+            lastChunkView.clear();
             Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
             
@@ -155,7 +145,12 @@ public class WorldMapServer {
             chunkPos -> {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
-                chunkQueue.offer(new ChunkTask(player.getUUID(), cx, cz));
+                int[] saved = storage == null ? null : storage.getChunk(cx, cz);
+                if (saved != null) {
+                    ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
+                } else {
+                    chunkQueue.offer(new ChunkTask(player.getUUID(), cx, cz));
+                }
             },
             chunkPos -> {}
         );
@@ -190,6 +185,7 @@ public class WorldMapServer {
      * Extract and send a single chunk's map data, saving to disk async.
      */
     private static void processChunkTask(ChunkTask task, MinecraftServer server) {
+        if (clientTintedChunks.contains(chunkKey(task.cx(), task.cz()))) return;
         ServerPlayer player = server.getPlayerList().getPlayer(task.playerUUID());
         if (player == null || !MODDED_PLAYERS.contains(task.playerUUID())) return;
 
@@ -197,20 +193,16 @@ public class WorldMapServer {
         LevelChunk chunk = level.getChunkSource().getChunkNow(task.cx(), task.cz());
         if (chunk == null) return;
 
-        extractionExecutor.submit(() -> {
-            int[] colors = MapColorExtractor.extract(chunk);
-            
-            server.execute(() -> {
-                if (server.getPlayerList().getPlayer(task.playerUUID()) != null) {
-                    ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), colors));
-                }
-            });
-
-            // Save to disk asynchronously
-            if (storage != null) {
-                ioExecutor.submit(() -> storage.updateChunk(task.cx(), task.cz(), colors));
-            }
-        });
+        // Read the live chunk only on the server thread. Extracting it on a worker
+        // thread raced block updates and could publish partial/older colors.
+        int[] colors = MapColorExtractor.extract(chunk);
+        if (clientTintedChunks.contains(chunkKey(task.cx(), task.cz()))) return;
+        if (server.getPlayerList().getPlayer(task.playerUUID()) != null) {
+            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), colors));
+        }
+        if (storage != null) {
+            ioExecutor.submit(() -> storage.updateChunk(task.cx(), task.cz(), colors));
+        }
     }
 
     private static void tick(MinecraftServer server) {
@@ -232,13 +224,12 @@ public class WorldMapServer {
                 
                 int cx = dirtyChunk.getPos().getMinBlockX() >> 4;
                 int cz = dirtyChunk.getPos().getMinBlockZ() >> 4;
-                
-                extractionExecutor.submit(() -> {
-                    int[] colors = MapColorExtractor.extract(dirtyChunk);
-                    server.execute(() -> {
-                        broadcastMapUpdate(server, cx, cz, colors);
-                    });
-                });
+                if (clientTintedChunks.contains(chunkKey(cx, cz))) continue;
+
+                int[] colors = MapColorExtractor.extract(dirtyChunk);
+                if (!clientTintedChunks.contains(chunkKey(cx, cz))) {
+                    broadcastMapUpdate(server, cx, cz, colors);
+                }
                 
                 dirtyProcessed++;
             }
