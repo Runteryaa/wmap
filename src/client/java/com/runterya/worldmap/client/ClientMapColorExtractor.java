@@ -3,13 +3,12 @@ package com.runterya.worldmap.client;
 import com.runterya.worldmap.backend.MapColorExtractor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.block.model.BlockModelPart;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
-import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -35,28 +34,31 @@ public final class ClientMapColorExtractor {
         if (state.isAir()) return -1;
 
         Minecraft minecraft = Minecraft.getInstance();
-        BlockRenderDispatcher blockRenderer = minecraft.getBlockRenderer();
-        BlockStateModel model = blockRenderer.getBlockModel(state);
+        BlockStateModel model = minecraft.getModelManager().getBlockStateModelSet().get(state);
         var parts = model.getParts(RandomSource.create(pos.asLong()));
         TextureAtlasSprite sprite = null;
-        for (BlockModelPart part : parts) {
+        for (BlockStateModelPart part : parts) {
             var topQuads = part.getQuads(Direction.UP);
             if (!topQuads.isEmpty()) {
-                sprite = topQuads.getFirst().getSprite();
+                BakedQuad quad = topQuads.getFirst();
+                sprite = quad.materialInfo().sprite();
                 break;
             }
         }
-        if (sprite == null) sprite = model.particleIcon();
+        if (sprite == null && !parts.isEmpty()) {
+            sprite = parts.getFirst().particleMaterial().sprite();
+        }
         if (sprite == null) return -1;
 
-        NativeImage image = sprite.contents().getOriginalImage();
         long red = 0;
         long green = 0;
         long blue = 0;
         int opaquePixels = 0;
-        for (int y = 0; y < image.getHeight(); y++) {
-            for (int x = 0; x < image.getWidth(); x++) {
-                int rgba = image.getPixelRGBA(x, y);
+        int width = sprite.contents().width();
+        int height = sprite.contents().height();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgba = sprite.getPixelRGBA(0, x, y);
                 if ((rgba >>> 24) == 0) continue;
 
                 // NativeImage packs little-endian RGBA pixels as AABBGGRR.
