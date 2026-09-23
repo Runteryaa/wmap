@@ -284,7 +284,7 @@ public class WorldMapServer {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (MODDED_PLAYERS.contains(player.getUUID())) {
                     positions.add(new PlayerPosPayload.PlayerPos(
-                        player.getUUID(), player.getX(), player.getZ(), player.getName().getString()
+                        player.getUUID(), player.getX(), player.getZ(), player.getYRot(), player.getName().getString()
                     ));
                 }
             }

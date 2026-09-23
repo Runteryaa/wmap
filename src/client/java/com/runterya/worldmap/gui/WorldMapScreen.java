@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft;
 
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.client.input.MouseButtonEvent;
 
@@ -13,8 +12,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public class WorldMapScreen extends Screen {
-    private static final Identifier PLAYER_MARKER = Identifier.fromNamespaceAndPath("minecraft", "textures/map/decorations/player.png");
-
     private double panX = 0;
     private double panY = 0;
     private double scale = 1.0;
@@ -60,42 +57,30 @@ public class WorldMapScreen extends Screen {
 
         // Render waypoints (will be drawn in screen space later to prevent scaling)
 
-        // Render player icons
-        if (Minecraft.getInstance().player != null) {
-            double pX = Minecraft.getInstance().player.getX();
-            double pZ = Minecraft.getInstance().player.getZ();
-            // Minecraft yaw: 0=south, 90=west, 180=north, -90=east
-            // On our map: south=+Z (down), north=-Z (up)
-            // Arrow sprite points "up" by default (north), so add 180 to flip to south for yaw=0
-            float yaw = Minecraft.getInstance().player.getYRot();
-            
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float)pX, (float)pZ);
-            graphics.pose().rotate((float) Math.toRadians(yaw + 180.0));
-            // id, x0, y0, x1, y1, u0, u1, v0, v1
-            graphics.blit(PLAYER_MARKER, -4, -4, 4, 4, 0.0f, 1.0f, 0.0f, 1.0f);
-            graphics.pose().popMatrix();
-        }
-
-        for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos p : ClientMapManager.getOtherPlayers()) {
-            if (Minecraft.getInstance().player != null) {
-                boolean sameUuid = p.uuid().equals(Minecraft.getInstance().player.getUUID());
-                boolean sameName = p.name().equals(Minecraft.getInstance().player.getName().getString());
-                if (sameUuid || sameName) {
-                    continue;
-                }
-            }
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float)p.x(), (float)p.z());
-            graphics.blit(PLAYER_MARKER, -4, -4, 4, 4, 0.0f, 1.0f, 0.0f, 1.0f);
-            graphics.pose().popMatrix();
-        }
-
         graphics.pose().popMatrix();
 
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
         String currentDim = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.dimension().identifier().toString() : "unknown";
+
+        // Player arrows stay screen-sized while zooming, like waypoint markers.
+        if (Minecraft.getInstance().player != null) {
+            var player = Minecraft.getInstance().player;
+            drawPlayerArrow(graphics,
+                centerX + (player.getX() + panX) * scale,
+                centerY + (player.getZ() + panY) * scale,
+                player.getYRot(), 0xFFFFFFFF);
+        }
+
+        for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
+            if (Minecraft.getInstance().player != null && player.uuid().equals(Minecraft.getInstance().player.getUUID())) {
+                continue;
+            }
+            drawPlayerArrow(graphics,
+                centerX + (player.x() + panX) * scale,
+                centerY + (player.z() + panY) * scale,
+                player.yaw(), colorForPlayer(player.uuid()));
+        }
         
         // Render waypoints in screen space
         for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
@@ -125,6 +110,33 @@ public class WorldMapScreen extends Screen {
         double mouseWorldZ = (mouseY - centerY) / scale - panY;
         String coordText = String.format("X: %d, Z: %d", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
         graphics.text(font, coordText, 5, 5, 0xFFFFFF, true);
+    }
+
+    private void drawPlayerArrow(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                 double screenX, double screenY, float yaw, int color) {
+        if (screenX < -10 || screenX > width + 10 || screenY < -10 || screenY > height + 10) return;
+
+        graphics.pose().pushMatrix();
+        graphics.pose().translate((float) screenX, (float) screenY);
+        // The arrow points north before rotation; Minecraft yaw 0 faces south.
+        graphics.pose().rotate((float) Math.toRadians(yaw + 180.0));
+
+        // Pixel-style arrow with a dark outline, drawn at a fixed screen size.
+        graphics.fill(-1, -6, 1, -2, 0xFF000000);
+        graphics.fill(-3, -3, 3, -1, 0xFF000000);
+        graphics.fill(-4, -1, 4, 1, 0xFF000000);
+        graphics.fill(-2, 1, 2, 6, 0xFF000000);
+        graphics.fill(-1, -5, 1, -2, color);
+        graphics.fill(-2, -3, 2, -1, color);
+        graphics.fill(-3, -1, 3, 1, color);
+        graphics.fill(-1, 1, 1, 5, color);
+        graphics.pose().popMatrix();
+    }
+
+    private static int colorForPlayer(UUID uuid) {
+        long mixed = uuid.getMostSignificantBits() ^ Long.rotateLeft(uuid.getLeastSignificantBits(), 23);
+        float hue = (float) ((mixed >>> 40 & 0xFFFFFFL) / 16777216.0);
+        return java.awt.Color.HSBtoRGB(hue, 0.82f, 1.0f) | 0xFF000000;
     }
 
     @Override

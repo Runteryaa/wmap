@@ -17,6 +17,7 @@ public record PlayerPosPayload(List<PlayerPos> positions) implements CustomPacke
                 buf.writeUUID(pos.uuid());
                 buf.writeDouble(pos.x());
                 buf.writeDouble(pos.z());
+                buf.writeFloat(pos.yaw());
                 buf.writeUtf(pos.name());
             }
         },
@@ -24,7 +25,7 @@ public record PlayerPosPayload(List<PlayerPos> positions) implements CustomPacke
             int size = buf.readInt();
             List<PlayerPos> list = new ArrayList<>(size);
             for (int i = 0; i < size; i++) {
-                list.add(new PlayerPos(buf.readUUID(), buf.readDouble(), buf.readDouble(), buf.readUtf()));
+                list.add(new PlayerPos(buf.readUUID(), buf.readDouble(), buf.readDouble(), buf.readFloat(), buf.readUtf()));
             }
             return new PlayerPosPayload(list);
         }
@@ -35,5 +36,5 @@ public record PlayerPosPayload(List<PlayerPos> positions) implements CustomPacke
         return ID;
     }
 
-    public record PlayerPos(UUID uuid, double x, double z, String name) {}
+    public record PlayerPos(UUID uuid, double x, double z, float yaw, String name) {}
 }
