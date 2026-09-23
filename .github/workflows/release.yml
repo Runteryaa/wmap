@@ -39,22 +39,20 @@ jobs:
           distribution: 'microsoft'
       - name: Make gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: Select version-specific client compatibility layer
-        run: >-
-          cp
-          src/client-${{ matrix.minecraft_version }}/java/com/runterya/worldmap/client/ClientPlatform.java
-          src/client/java/com/runterya/worldmap/client/ClientPlatform.java
       - name: Build for Minecraft ${{ matrix.minecraft_version }}
         run: >-
           ./gradlew build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           -Pfabric_api_version=${{ matrix.fabric_api_version }}
           -Ploom_version=${{ matrix.loom_version }}
-      - name: Save version-specific jar
+      - name: Save universal jar
+        if: matrix.minecraft_version == '26.1.2'
         uses: actions/upload-artifact@v4
         with:
-          name: worldmap-${{ matrix.minecraft_version }}
-          path: build/libs/*.jar
+          name: worldmap-universal
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
           if-no-files-found: error
           retention-days: 1
 
@@ -69,7 +67,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Download version-specific jars
+      - name: Download universal jar
         uses: actions/download-artifact@v4
         with:
           path: build/libs
