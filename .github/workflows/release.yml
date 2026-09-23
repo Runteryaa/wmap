@@ -19,10 +19,6 @@ jobs:
         include:
           - minecraft_version: 26.1.2
             fabric_api_version: 0.151.0+26.1.2
-          - minecraft_version: '26.2'
-            fabric_api_version: 0.161.0+26.2
-          - minecraft_version: '26.3'
-            fabric_api_version: 0.161.0+26.3
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -98,27 +94,3 @@ jobs:
           loaders: fabric
           game-versions: 26.1.2
           files: build/libs/*+mc26.1.2.jar
-      - name: Publish Minecraft 26.2 file to Modrinth
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
-          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.2
-          version: ${{ steps.get_version.outputs.version }}-mc26.2
-          version-type: alpha
-          changelog-file: CHANGELOG.md
-          loaders: fabric
-          game-versions: 26.2
-          files: build/libs/*+mc26.2.jar
-      - name: Publish Minecraft 26.3 file to Modrinth
-        uses: Kir-Antipov/mc-publish@v3.3
-        with:
-          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
-          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.3
-          version: ${{ steps.get_version.outputs.version }}-mc26.3
-          version-type: alpha
-          changelog-file: CHANGELOG.md
-          loaders: fabric
-          game-versions: 26.3
-          files: build/libs/*+mc26.3.jar
