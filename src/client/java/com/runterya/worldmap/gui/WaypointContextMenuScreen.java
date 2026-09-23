@@ -26,20 +26,20 @@ public class WaypointContextMenuScreen extends Screen {
             if (minecraft != null && minecraft.player != null) {
                 minecraft.player.connection.sendCommand("tp @s " + (this.waypoint.getX() + 0.5) + " "
                     + this.waypoint.getY() + " " + (this.waypoint.getZ() + 0.5));
-                minecraft.setScreen(null);
+                com.runterya.worldmap.client.ClientPlatform.setScreen(minecraft, null);
             }
         }).bounds(centerX - 100, top, 200, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> {
-            this.minecraft.setScreen(new WaypointAddScreen(this.parent, this.waypoint));
+            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, new WaypointAddScreen(this.parent, this.waypoint));
         }).bounds(centerX - 100, top + 24, 200, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> {
             WaypointManager.removeWaypoint(this.waypoint);
             if (this.minecraft.player != null) {
                 this.minecraft.player.sendSystemMessage(Component.literal("Waypoint removed!"));
             }
-            this.minecraft.setScreen(this.parent);
+            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(centerX - 100, top + 48, 200, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Back"), button -> this.minecraft.setScreen(this.parent))
+        this.addRenderableWidget(Button.builder(Component.literal("Back"), button -> com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent))
             .bounds(centerX - 100, top + 72, 200, 20).build());
     }
 

@@ -103,11 +103,11 @@ public class WaypointAddScreen extends Screen {
             if (this.minecraft != null && this.minecraft.player != null) {
                 this.minecraft.player.sendSystemMessage(Component.literal(this.editingWaypoint == null ? "Waypoint added!" : "Waypoint updated!"));
             }
-            this.minecraft.setScreen(this.parent);
+            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(centerX - 100, centerY + 20, 98, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> {
-            this.minecraft.setScreen(this.parent);
+            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(centerX + 2, centerY + 20, 98, 20).build());
     }
 

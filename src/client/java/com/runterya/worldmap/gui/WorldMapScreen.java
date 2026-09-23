@@ -170,14 +170,14 @@ public class WorldMapScreen extends Screen {
             }
             
             if (clickedWaypoint != null) {
-                Minecraft.getInstance().setScreen(new WaypointContextMenuScreen(this, clickedWaypoint));
+                com.runterya.worldmap.client.ClientPlatform.setScreen(Minecraft.getInstance(), new WaypointContextMenuScreen(this, clickedWaypoint));
             } else {
                 int blockY = 64; // Default Y
                 if (Minecraft.getInstance().player != null) {
                     blockY = Minecraft.getInstance().player.getBlockY();
                 }
                 
-                Minecraft.getInstance().setScreen(new WaypointAddScreen(this, blockX, blockY, blockZ, dim));
+                com.runterya.worldmap.client.ClientPlatform.setScreen(Minecraft.getInstance(), new WaypointAddScreen(this, blockX, blockY, blockZ, dim));
             }
             return true;
         }

@@ -7,8 +7,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
-import com.mojang.blaze3d.platform.InputConstants;
-import org.lwjgl.glfw.GLFW;
 
 import com.runterya.worldmap.network.HandshakePayload;
 import com.runterya.worldmap.network.MapUpdatePayload;
@@ -33,19 +31,9 @@ public class WorldMapClient implements ClientModInitializer {
     public void onInitializeClient() {
         WorldMapMod.LOGGER.info("WorldMap Client initializing...");
 
-        mapKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-            "key.worldmap.open", 
-            InputConstants.Type.KEYSYM, 
-            GLFW.GLFW_KEY_M, 
-            CATEGORY
-        ));
+        mapKeyBinding = ClientPlatform.createKeyMapping("key.worldmap.open", true, CATEGORY);
 
-        waypointKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-            "key.worldmap.add_waypoint", 
-            InputConstants.Type.KEYSYM, 
-            GLFW.GLFW_KEY_B, 
-            CATEGORY
-        ));
+        waypointKeyBinding = ClientPlatform.createKeyMapping("key.worldmap.add_waypoint", false, CATEGORY);
 
         WaypointManager.load();
         WaypointBeaconBeamRenderer.initialize();
@@ -56,7 +44,7 @@ public class WorldMapClient implements ClientModInitializer {
             if (mapKeyBinding != null) {
                 while (mapKeyBinding.consumeClick()) {
                     if (client.player != null) {
-                        client.setScreen(new com.runterya.worldmap.gui.WorldMapScreen());
+                        ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WorldMapScreen());
                     }
                 }
             }
@@ -67,7 +55,7 @@ public class WorldMapClient implements ClientModInitializer {
                         int y = client.player.getBlockY();
                         int z = client.player.getBlockZ();
                         String dim = client.level.dimension().identifier().toString();
-                        client.setScreen(new com.runterya.worldmap.gui.WaypointAddScreen(client.screen, x, y, z, dim));
+                        ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WaypointAddScreen(null, x, y, z, dim));
                     }
                 }
             }
@@ -116,7 +104,10 @@ public class WorldMapClient implements ClientModInitializer {
                     textDisplay.setPos(wp.getX() + 0.5, yPos + 1.0, wp.getZ() + 0.5);
                     textDisplay.setCustomName(net.minecraft.network.chat.Component.literal(wp.getName()).withStyle(net.minecraft.ChatFormatting.GOLD));
                 } else {
-                    net.minecraft.world.entity.Display.TextDisplay newDisplay = new net.minecraft.world.entity.Display.TextDisplay(net.minecraft.world.entity.EntityType.TEXT_DISPLAY, client.level);
+                    net.minecraft.world.entity.EntityType<?> textDisplayType = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getValue(
+                        Identifier.fromNamespaceAndPath("minecraft", "text_display")
+                    );
+                    net.minecraft.world.entity.Display.TextDisplay newDisplay = new net.minecraft.world.entity.Display.TextDisplay(textDisplayType, client.level);
                     newDisplay.setId(wpId);
                     newDisplay.setPos(wp.getX() + 0.5, yPos + 1.0, wp.getZ() + 0.5);
                     newDisplay.setCustomName(net.minecraft.network.chat.Component.literal(wp.getName()).withStyle(net.minecraft.ChatFormatting.GOLD));
