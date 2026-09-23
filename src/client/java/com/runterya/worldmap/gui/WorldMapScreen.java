@@ -66,10 +66,15 @@ public class WorldMapScreen extends Screen {
         // Player arrows stay screen-sized while zooming, like waypoint markers.
         if (Minecraft.getInstance().player != null) {
             var player = Minecraft.getInstance().player;
-            drawPlayerArrow(graphics,
-                centerX + (player.getX() + panX) * scale,
-                centerY + (player.getZ() + panY) * scale,
-                player.getYRot() + 180.0f, 0xFFFFFFFF);
+            double playerX = centerX + (player.getX() + panX) * scale;
+            double playerY = centerY + (player.getZ() + panY) * scale;
+            double[] marker = markerScreenPosition(playerX, playerY, centerX, centerY);
+            boolean onScreen = playerX >= 10 && playerX <= width - 10
+                && playerY >= 10 && playerY <= height - 24;
+            float rotation = onScreen
+                ? player.getYRot() + 180.0f
+                : (float) Math.toDegrees(Math.atan2(playerX - centerX, -(playerY - centerY)));
+            drawPlayerArrow(graphics, marker[0], marker[1], rotation, 0xFFFFFFFF);
         }
 
         for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
@@ -137,6 +142,10 @@ public class WorldMapScreen extends Screen {
     ) {
         double screenX = centerX + (player.x() + panX) * scale;
         double screenY = centerY + (player.z() + panY) * scale;
+        return markerScreenPosition(screenX, screenY, centerX, centerY);
+    }
+
+    private double[] markerScreenPosition(double screenX, double screenY, int centerX, int centerY) {
         if (screenX >= 10 && screenX <= width - 10 && screenY >= 10 && screenY <= height - 24) {
             return new double[] {screenX, screenY};
         }
@@ -212,7 +221,8 @@ public class WorldMapScreen extends Screen {
                 var localPlayer = Minecraft.getInstance().player;
                 double localX = centerX + (localPlayer.getX() + panX) * scale;
                 double localY = centerY + (localPlayer.getZ() + panY) * scale;
-                if (isNearMarker(event.x(), event.y(), localX, localY)) {
+                double[] localMarker = markerScreenPosition(localX, localY, centerX, centerY);
+                if (isNearMarker(event.x(), event.y(), localMarker[0], localMarker[1])) {
                     centerMapOn(localPlayer.getX(), localPlayer.getZ());
                     return true;
                 }
