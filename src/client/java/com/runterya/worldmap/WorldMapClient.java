@@ -17,8 +17,8 @@ import com.runterya.worldmap.client.ClientMapManager;
 import com.runterya.worldmap.client.ClientMapStorage;
 import com.runterya.worldmap.client.waypoint.Waypoint;
 import com.runterya.worldmap.client.waypoint.WaypointManager;
+import com.runterya.worldmap.client.waypoint.WaypointBeaconBeamRenderer;
 import net.minecraft.resources.Identifier;
-import java.util.Random;
 
 public class WorldMapClient implements ClientModInitializer {
     private static KeyMapping mapKeyBinding;
@@ -48,6 +48,7 @@ public class WorldMapClient implements ClientModInitializer {
         ));
 
         WaypointManager.load();
+        WaypointBeaconBeamRenderer.initialize();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ClientMapManager.processPendingChunks(2);
@@ -91,36 +92,6 @@ public class WorldMapClient implements ClientModInitializer {
 
         ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> ClientMapManager.queueChunk(chunk));
 
-        // Waypoint Particle Beam
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.level != null && client.player != null) {
-                String currentDim = client.level.dimension().identifier().toString();
-                for (Waypoint wp : WaypointManager.getWaypoints()) {
-                    if (wp.getDimension().equals(currentDim)) {
-                        double distSq = client.player.distanceToSqr(wp.getX(), client.player.getY(), wp.getZ());
-                        if (distSq < 16384) { // Render beam if within ~128 blocks
-                            int color = wp.getColor() | 0xFF000000;
-                            net.minecraft.core.particles.DustParticleOptions options = new net.minecraft.core.particles.DustParticleOptions(color, 2.0f);
-                            
-                            // Spawn a solid vertical beam around the player's Y level
-                            double startY = Math.max(client.level.getMinY(), client.player.getY() - 64);
-                            double endY = Math.min(client.level.getMaxY(), client.player.getY() + 64);
-                            
-                            for (double y = startY; y <= endY; y += 4.0) {
-                                client.level.addParticle(
-                                    options,
-                                    wp.getX() + 0.5,
-                                    y + (client.player.tickCount % 20) / 5.0,
-                                    wp.getZ() + 0.5,
-                                    0, 0.05, 0
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
         // 3D Waypoint Text
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.level == null || client.player == null) return;
@@ -131,7 +102,7 @@ public class WorldMapClient implements ClientModInitializer {
             for (Waypoint wp : WaypointManager.getWaypoints()) {
                 if (!wp.getDimension().equals(currentDim)) continue;
                 
-                // Only render text if within 256 blocks (same as particles)
+                // Keep waypoint labels readable without filling the entire view.
                 double distSq = client.player.distanceToSqr(wp.getX() + 0.5, client.player.getY(), wp.getZ() + 0.5);
                 if (distSq > 256 * 256) continue;
                 
