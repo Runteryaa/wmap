@@ -112,7 +112,7 @@ public class WaypointAddScreen extends Screen {
     }
 
     private Component visibilityLabel() {
-        return Component.literal(this.isGlobal ? "[✓] Everyone can see" : "[ ] Everyone can see");
+        return Component.literal(this.isGlobal ? "[✓] Public" : "[ ] Public");
     }
 
     private long lastClickTime = 0;
