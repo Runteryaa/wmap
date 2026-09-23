@@ -98,7 +98,10 @@ public class MapColorExtractor {
                     // Heightmap differences can include off-by-one/terrain cases
                     // and made separate chunks collapse to the same shade.
                     int depth = getWaterDepth(chunk, pos);
-                    float factor = 1.0f / (1.0f + depth * WATER_DARKENING_PER_BLOCK);
+                    // Leave the first water block bright, then increase contrast
+                    // steadily as the column gets deeper.
+                    float darkeningDepth = Math.max(0, depth - SHALLOW_WATER_BLOCKS);
+                    float factor = 1.0f / (1.0f + darkeningDepth * WATER_DARKENING_PER_BLOCK);
                     argb = darkenColor(argb, factor);
                 }
 
@@ -108,9 +111,10 @@ public class MapColorExtractor {
         return colors;
     }
 
-    // Continuous depth curve: 10/20/40/60 water blocks retain about
-    // 80/67/50/40 percent brightness. It has no early dark plateau.
-    private static final float WATER_DARKENING_PER_BLOCK = 0.025f;
+    // The first block stays bright; 5/10/20/40/60-block columns retain about
+    // 86/74/57/39/30 percent brightness. The curve has no early dark plateau.
+    private static final int SHALLOW_WATER_BLOCKS = 1;
+    private static final float WATER_DARKENING_PER_BLOCK = 0.04f;
 
     private static int getWaterDepth(LevelChunk chunk, BlockPos surfacePos) {
         BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();
