@@ -116,19 +116,11 @@ public class WaypointAddScreen extends Screen {
         return Component.literal(this.isGlobal ? "[✓] Public" : "[ ] Public");
     }
 
-    private long lastClickTime = 0;
-
     @Override
     public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean isDouble) {
-        double scale = this.minecraft.getWindow().getGuiScale();
-        double mouseX = this.minecraft.mouseHandler.xpos() / scale;
-        double mouseY = this.minecraft.mouseHandler.ypos() / scale;
+        double mouseX = event.x();
+        double mouseY = event.y();
         int button = event.button();
-        
-        long time = System.currentTimeMillis();
-        if (time - this.lastClickTime < 200) {
-            return false;
-        }
         
         int centerX = this.width / 2;
         int centerY = this.height / 2;
@@ -139,7 +131,6 @@ public class WaypointAddScreen extends Screen {
             // Check if clicked on color preview box
             if (mouseX >= boxX && mouseX <= boxX + 20 && mouseY >= boxY && mouseY <= boxY + 20) {
                 this.showColorWheel = !this.showColorWheel;
-                this.lastClickTime = time;
                 return true;
             }
 
@@ -161,7 +152,6 @@ public class WaypointAddScreen extends Screen {
                         
                         this.currentColor = java.awt.Color.HSBtoRGB(hue, saturation, 1.0f) & 0xFFFFFF;
                         this.colorField.setValue(String.format("%06X", this.currentColor));
-                        this.lastClickTime = time;
                         return true;
                     }
                 }
