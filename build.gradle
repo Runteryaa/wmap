@@ -6,6 +6,10 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+base {
+	archivesName = "${project.name}-${project.mod_version}+mc${project.minecraft_version}"
+}
+
 repositories {
 	mavenCentral()
 }

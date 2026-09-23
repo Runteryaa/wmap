@@ -5,11 +5,30 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.core.Holder;
 
 public class MapColorExtractor {
+    @FunctionalInterface
+    public interface BiomeTintResolver {
+        /**
+         * Returns the block's tint, or -1 when it has no tint or cannot be
+         * resolved in the current environment.
+         */
+        int resolve(LevelChunk chunk, BlockPos pos, MapColor mapColor);
+    }
+
     public static int[] extract(LevelChunk chunk) {
+        // The dedicated server has no client biome colormap resources. Leave
+        // biome-tinted pixels at their MapColor base; clients replace them with
+        // the vanilla block tint once they have the chunk loaded.
+        return extract(chunk, (ignoredChunk, ignoredPos, ignoredMapColor) -> -1);
+    }
+
+    /**
+     * Extracts a chunk while letting the caller use its own vanilla color
+     * resolvers. Dedicated servers do not load the client color resources, so
+     * the client passes Minecraft's block tint sources here.
+     */
+    public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver) {
         int[] colors = new int[256];
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
@@ -40,37 +59,22 @@ public class MapColorExtractor {
 
                 // Compute base ARGB color based on the MapColor and 3D shading
                 int argb = mapColor.calculateARGBColor(brightness);
-                
-                // --- BIOME TINTING & WATER DEPTH ---
-                if (mapColor == MapColor.GRASS || mapColor == MapColor.PLANT || mapColor == MapColor.WATER) {
-                    Holder<Biome> biomeHolder = chunk.getNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2);
-                    if (biomeHolder != null && biomeHolder.value() != null) {
-                        Biome biome = biomeHolder.value();
-                        if (mapColor == MapColor.GRASS) {
-                            int tint = biome.getGrassColor(pos.getX(), pos.getZ());
-                            if (tint == -65281 || tint == 0) { // Dedicated Server missing colormap
-                                tint = approximateColor(biome.getBaseTemperature(), false);
-                            }
-                            argb = applyBrightness(tint, brightness);
-                        } else if (mapColor == MapColor.PLANT) {
-                            int tint = biome.getFoliageColor();
-                            if (tint == -65281 || tint == 0) {
-                                tint = approximateColor(biome.getBaseTemperature(), true);
-                            }
-                            argb = applyBrightness(tint, brightness);
-                        } else if (mapColor == MapColor.WATER) {
-                            int tint = biome.getWaterColor();
-                            if (tint != -65281 && tint != 0) {
-                                argb = applyBrightness(tint, brightness);
-                            }
-                            
-                            // Water depth shading
-                            int oceanFloorY = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
-                            int depth = Math.max(0, pos.getY() - oceanFloorY);
-                            float factor = Math.max(0.4f, 1.0f - (depth * 0.04f));
-                            argb = darkenColor(argb, factor);
-                        }
-                    }
+
+                // Ask the client for every block's registered tint source.
+                // New blocks can use fixed or custom tints even when their
+                // MapColor is not one of the three classic biome categories.
+                int tint = tintResolver.resolve(chunk, pos, mapColor);
+                if (tint != -1 && tint != 0xFFFF00FF) {
+                    argb = applyBrightness(tint, brightness);
+                }
+
+                if (mapColor == MapColor.WATER) {
+                    // Keep the map's water-depth relief, after applying
+                    // Minecraft's biome water color.
+                    int oceanFloorY = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
+                    int depth = Math.max(0, pos.getY() - oceanFloorY);
+                    float factor = Math.max(0.4f, 1.0f - (depth * 0.04f));
+                    argb = darkenColor(argb, factor);
                 }
 
                 colors[z * 16 + x] = argb;
@@ -98,10 +102,4 @@ public class MapColorExtractor {
         return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
-    private static int approximateColor(float temp, boolean isFoliage) {
-        if (temp < 0.2f) return isFoliage ? 0x60A17B : 0x80B497; // Snowy/Ice
-        if (temp < 0.5f) return isFoliage ? 0x68A048 : 0x86B783; // Taiga/Cool
-        if (temp < 0.85f) return isFoliage ? 0x59AE30 : 0x79C05A; // Plains/Forest
-        return isFoliage ? 0x82A82D : 0x90814D; // Desert/Savanna
-    }
 }

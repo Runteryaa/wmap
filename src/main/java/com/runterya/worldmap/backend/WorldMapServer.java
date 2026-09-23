@@ -1,6 +1,7 @@
 package com.runterya.worldmap.backend;
 
 import com.runterya.worldmap.network.MapUpdatePayload;
+import com.runterya.worldmap.network.MapColorReportPayload;
 import com.runterya.worldmap.network.PlayerPosPayload;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -76,6 +77,17 @@ public class WorldMapServer {
 
 
     public static void init() {
+        ServerPlayNetworking.registerGlobalReceiver(MapColorReportPayload.ID, (payload, context) -> {
+            context.server().execute(() -> {
+                if (!MODDED_PLAYERS.contains(context.player().getUUID()) || payload.colors().length != 256) {
+                    return;
+                }
+                // Client biome color resources are authoritative for map tinting;
+                // persist and share the vanilla-resolved colors it reports.
+                broadcastMapUpdate(context.server(), payload.chunkX(), payload.chunkZ(), payload.colors());
+            });
+        });
+
         ServerPlayNetworking.registerGlobalReceiver(com.runterya.worldmap.network.HandshakePayload.ID, (payload, context) -> {
             context.server().execute(() -> {
                 MODDED_PLAYERS.add(context.player().getUUID());

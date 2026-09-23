@@ -13,8 +13,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - minecraft_version: 26.1.2
+            fabric_api_version: 0.151.0+26.1.2
+          - minecraft_version: '26.2'
+            fabric_api_version: 0.161.0+26.2
+          - minecraft_version: '26.3'
+            fabric_api_version: 0.161.0+26.3
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -28,15 +36,41 @@ jobs:
           distribution: 'microsoft'
       - name: Make gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: Build
-        run: ./gradlew build
+      - name: Build for Minecraft ${{ matrix.minecraft_version }}
+        run: >-
+          ./gradlew build
+          -Pminecraft_version=${{ matrix.minecraft_version }}
+          -Pfabric_api_version=${{ matrix.fabric_api_version }}
+      - name: Save version-specific jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: worldmap-${{ matrix.minecraft_version }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Download version-specific jars
+        uses: actions/download-artifact@v4
+        with:
+          path: build/libs
+          merge-multiple: true
       - name: Get Version
         id: get_version
         run: |
           VERSION=$(grep '^mod_version=' gradle.properties | cut -d'=' -f2 | tr -d '\r')
           echo "version=v$VERSION" >> $GITHUB_OUTPUT
       - name: Generate Changelog
-        id: changelog
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$LAST_TAG" ]; then
@@ -52,17 +86,39 @@ jobs:
           body_path: CHANGELOG.md
           files: build/libs/*.jar
           generate_release_notes: false
-      - name: Publish to Modrinth
+      - name: Publish Minecraft 26.1.2 file to Modrinth
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          name: Release ${{ steps.get_version.outputs.version }}
-          version: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.1.2
+          version: ${{ steps.get_version.outputs.version }}-mc26.1.2
           version-type: alpha
           changelog-file: CHANGELOG.md
           loaders: fabric
-          game-versions: |
-            26.1.2
-            26.2
-          files: build/libs/!(*-sources).jar
+          game-versions: 26.1.2
+          files: build/libs/*+mc26.1.2.jar
+      - name: Publish Minecraft 26.2 file to Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.2
+          version: ${{ steps.get_version.outputs.version }}-mc26.2
+          version-type: alpha
+          changelog-file: CHANGELOG.md
+          loaders: fabric
+          game-versions: 26.2
+          files: build/libs/*+mc26.2.jar
+      - name: Publish Minecraft 26.3 file to Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          name: Release ${{ steps.get_version.outputs.version }} for Minecraft 26.3
+          version: ${{ steps.get_version.outputs.version }}-mc26.3
+          version-type: alpha
+          changelog-file: CHANGELOG.md
+          loaders: fabric
+          game-versions: 26.3
+          files: build/libs/*+mc26.3.jar

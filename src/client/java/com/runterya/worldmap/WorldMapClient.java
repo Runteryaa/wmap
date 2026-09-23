@@ -2,6 +2,7 @@ package com.runterya.worldmap;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -49,6 +50,8 @@ public class WorldMapClient implements ClientModInitializer {
         WaypointManager.load();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            ClientMapManager.processPendingChunks(2);
+
             if (mapKeyBinding != null) {
                 while (mapKeyBinding.consumeClick()) {
                     if (client.player != null) {
@@ -85,6 +88,8 @@ public class WorldMapClient implements ClientModInitializer {
                 wasDead = isDead;
             }
         });
+
+        ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> ClientMapManager.queueChunk(chunk));
 
         // Waypoint Particle Beam
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -203,4 +208,3 @@ public class WorldMapClient implements ClientModInitializer {
         });
     }
 }
-

@@ -4,24 +4,61 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.chunk.LevelChunk;
 import com.mojang.blaze3d.platform.NativeImage;
-import java.util.HashMap;
 import java.util.Map;
 import com.runterya.worldmap.network.PlayerPosPayload.PlayerPos;
 import java.util.List;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Queue;
+import java.util.Set;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import com.runterya.worldmap.network.MapColorReportPayload;
 
 public class ClientMapManager {
     private static final Map<ChunkPos, RegionTexture> regions = new ConcurrentHashMap<>();
     private static List<PlayerPos> otherPlayers = Collections.emptyList();
+    private static final Queue<LevelChunk> pendingChunks = new ConcurrentLinkedQueue<>();
+    private static final Set<LevelChunk> pendingChunkSet = ConcurrentHashMap.newKeySet();
 
     /** Clear all in-memory map data (call on world disconnect). */
     public static void clear() {
         regions.values().forEach(RegionTexture::close);
         regions.clear();
         otherPlayers = Collections.emptyList();
+        pendingChunks.clear();
+        pendingChunkSet.clear();
+    }
+
+    /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
+    public static void queueChunk(LevelChunk chunk) {
+        if (pendingChunkSet.add(chunk)) {
+            pendingChunks.offer(chunk);
+        }
+    }
+
+    /** Process a small number per tick to avoid freezing while chunks stream in. */
+    public static void processPendingChunks(int limit) {
+        Minecraft minecraft = Minecraft.getInstance();
+        for (int processed = 0; processed < limit; processed++) {
+            LevelChunk chunk = pendingChunks.poll();
+            if (chunk == null) return;
+            pendingChunkSet.remove(chunk);
+
+            if (minecraft.level == null || chunk.getLevel() != minecraft.level) continue;
+
+            int chunkX = chunk.getPos().x();
+            int chunkZ = chunk.getPos().z();
+            int[] colors = ClientMapColorExtractor.extract(chunk);
+            receiveUpdate(chunkX, chunkZ, colors);
+            ClientMapStorage.saveChunk(chunkX, chunkZ, colors);
+
+            if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
+                ClientPlayNetworking.send(new MapColorReportPayload(chunkX, chunkZ, colors));
+            }
+        }
     }
 
     public static void receiveUpdate(int chunkX, int chunkZ, int[] colors) {
