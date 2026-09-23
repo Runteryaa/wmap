@@ -94,12 +94,11 @@ public class MapColorExtractor {
                 }
 
                 if (mapColor == MapColor.WATER) {
-                    // Keep the map's water-depth relief, after applying
-                    // Minecraft's biome water color.
-                    int waterSurfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
-                    int oceanFloorY = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
-                    int depth = Math.max(0, waterSurfaceY - oceanFloorY);
-                    float factor = Math.max(MIN_WATER_BRIGHTNESS, (float) Math.pow(WATER_DARKENING_PER_BLOCK, depth));
+                    // Count the actual contiguous water column below this pixel.
+                    // Heightmap differences can include off-by-one/terrain cases
+                    // and made separate chunks collapse to the same shade.
+                    int depth = getWaterDepth(chunk, pos);
+                    float factor = 1.0f / (1.0f + depth * WATER_DARKENING_PER_BLOCK);
                     argb = darkenColor(argb, factor);
                 }
 
@@ -109,11 +108,23 @@ public class MapColorExtractor {
         return colors;
     }
 
-    // A gentle per-block curve preserves a visible depth gradient without
-    // flattening deep seas into near-black. At 20/40/60 blocks the tint keeps
-    // about 85/73/62 percent brightness, then bottoms out at 45 percent.
-    private static final float WATER_DARKENING_PER_BLOCK = 0.992f;
-    private static final float MIN_WATER_BRIGHTNESS = 0.45f;
+    // Continuous depth curve: 10/20/40/60 water blocks retain about
+    // 80/67/50/40 percent brightness. It has no early dark plateau.
+    private static final float WATER_DARKENING_PER_BLOCK = 0.025f;
+
+    private static int getWaterDepth(LevelChunk chunk, BlockPos surfacePos) {
+        BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();
+        int depth = 0;
+        for (int y = surfacePos.getY(); y >= chunk.getMinY(); y--) {
+            scanPos.set(surfacePos.getX(), y, surfacePos.getZ());
+            BlockState state = chunk.getBlockState(scanPos);
+            if (state.getMapColor(chunk.getLevel(), scanPos) != MapColor.WATER) {
+                break;
+            }
+            depth++;
+        }
+        return depth;
+    }
 
     private static int multiplyColors(int base, int tint) {
         int r = (((base >> 16) & 0xFF) * ((tint >> 16) & 0xFF)) / 255;
