@@ -14,6 +14,7 @@ import java.util.List;
 /** Renders waypoint markers with Minecraft's own animated beacon beam. */
 public final class WaypointBeaconBeamRenderer {
     private static final double MAX_DISTANCE_SQUARED = 512.0 * 512.0;
+    private static final int BEAM_START_Y = -128;
 
     private static volatile List<BeamState> extractedBeams = List.of();
     private static volatile List<BeamState> preparedBeams = List.of();
@@ -45,9 +46,9 @@ public final class WaypointBeaconBeamRenderer {
             double dz = waypoint.getZ() + 0.5 - playerZ;
             if (dx * dx + dz * dz > MAX_DISTANCE_SQUARED) continue;
 
-            int height = Math.max(1, minecraft.level.getMaxY() - waypoint.getY());
+            int height = Math.max(1, minecraft.level.getMaxY() - BEAM_START_Y);
             visible.add(new BeamState(
-                waypoint.getX(), waypoint.getY(), waypoint.getZ(),
+                waypoint.getX(), BEAM_START_Y, waypoint.getZ(),
                 height, waypoint.getColor() & 0xFFFFFF, animationTime
             ));
         }
