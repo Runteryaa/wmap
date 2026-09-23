@@ -16,6 +16,7 @@ import com.runterya.worldmap.client.ClientMapStorage;
 import com.runterya.worldmap.client.waypoint.Waypoint;
 import com.runterya.worldmap.client.waypoint.WaypointManager;
 import com.runterya.worldmap.client.waypoint.WaypointBeaconBeamRenderer;
+import com.runterya.worldmap.client.ClientPlatform;
 import net.minecraft.resources.Identifier;
 
 public class WorldMapClient implements ClientModInitializer {
