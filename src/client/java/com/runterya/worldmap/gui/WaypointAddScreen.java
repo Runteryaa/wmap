@@ -68,10 +68,12 @@ public class WaypointAddScreen extends Screen {
         });
         this.addRenderableWidget(this.colorField);
 
-        this.addRenderableWidget(Button.builder(Component.literal("Type: Local"), button -> {
-            this.isGlobal = !this.isGlobal;
-            button.setMessage(Component.literal("Type: " + (this.isGlobal ? "Global" : "Local")));
-        }).bounds(centerX + 10, centerY - 20, 90, 20).build());
+        if (WaypointManager.isServerWaypointSharingAvailable()) {
+            this.addRenderableWidget(Button.builder(visibilityLabel(), button -> {
+                this.isGlobal = !this.isGlobal;
+                button.setMessage(visibilityLabel());
+            }).bounds(centerX + 10, centerY - 20, 180, 20).build());
+        }
 
         this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> {
             int color = 0xFF000000 | this.currentColor;
@@ -93,6 +95,10 @@ public class WaypointAddScreen extends Screen {
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> {
             this.minecraft.setScreen(this.parent);
         }).bounds(centerX + 2, centerY + 20, 98, 20).build());
+    }
+
+    private Component visibilityLabel() {
+        return Component.literal(this.isGlobal ? "[✓] Everyone can see" : "[ ] Everyone can see");
     }
 
     private long lastClickTime = 0;

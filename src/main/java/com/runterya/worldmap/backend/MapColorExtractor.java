@@ -90,9 +90,10 @@ public class MapColorExtractor {
                 if (mapColor == MapColor.WATER) {
                     // Keep the map's water-depth relief, after applying
                     // Minecraft's biome water color.
+                    int waterSurfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
                     int oceanFloorY = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
-                    int depth = Math.max(0, pos.getY() - oceanFloorY);
-                    float factor = Math.max(MIN_WATER_BRIGHTNESS, 1.0f - (depth * WATER_DARKENING_PER_BLOCK));
+                    int depth = Math.max(0, waterSurfaceY - oceanFloorY);
+                    float factor = Math.max(MIN_WATER_BRIGHTNESS, (float) Math.pow(WATER_DARKENING_PER_BLOCK, depth));
                     argb = darkenColor(argb, factor);
                 }
 
@@ -102,8 +103,8 @@ public class MapColorExtractor {
         return colors;
     }
 
-    private static final float WATER_DARKENING_PER_BLOCK = 0.04f;
-    private static final float MIN_WATER_BRIGHTNESS = 0.4f;
+    private static final float WATER_DARKENING_PER_BLOCK = 0.985f;
+    private static final float MIN_WATER_BRIGHTNESS = 0.2f;
 
     private static int multiplyColors(int base, int tint) {
         int r = (((base >> 16) & 0xFF) * ((tint >> 16) & 0xFF)) / 255;

@@ -33,6 +33,9 @@ public final class ClientMapColorExtractor {
         }
 
         return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> {
+            if (mapColor == MapColor.WATER) {
+                return 0xFF000000 | (level.getBiome(pos).value().getWaterColor() & 0xFFFFFF);
+            }
             BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
             return tintSource == null ? -1 : tintSource.colorInWorld(state, level, pos);
         }, ClientMapColorExtractor::averageTopTextureColor);

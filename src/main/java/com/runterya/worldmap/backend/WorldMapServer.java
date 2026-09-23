@@ -110,7 +110,7 @@ public class WorldMapServer {
                 globalWaypoints.add(wp);
                 saveGlobalWaypoints();
                 
-                SyncGlobalWaypointsPayload syncPayload = new SyncGlobalWaypointsPayload(List.of(wp)); // sending just the new one
+                SyncGlobalWaypointsPayload syncPayload = new SyncGlobalWaypointsPayload(new ArrayList<>(globalWaypoints));
                 for (ServerPlayer player : context.server().getPlayerList().getPlayers()) {
                     if (MODDED_PLAYERS.contains(player.getUUID())) {
                         ServerPlayNetworking.send(player, syncPayload);
@@ -133,6 +133,7 @@ public class WorldMapServer {
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
             
             globalWaypointsFile = worldDir.resolve("worldmap").resolve("global_waypoints.json").toFile();
+            globalWaypoints.clear();
             loadGlobalWaypoints();
         });
 

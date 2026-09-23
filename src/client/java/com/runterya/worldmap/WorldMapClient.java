@@ -170,6 +170,11 @@ public class WorldMapClient implements ClientModInitializer {
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, cl) -> {
             ClientMapStorage.setCurrentServer();
+            WaypointManager.bindLegacyWaypointsToCurrentWorld();
+            WaypointManager.clearGlobalWaypoints();
+            WaypointManager.setServerWaypointSharingAvailable(
+                ClientPlayNetworking.canSend(com.runterya.worldmap.network.AddGlobalWaypointPayload.ID)
+            );
             cl.execute(() -> {
                 ClientMapManager.clear();
                 ClientMapStorage.loadAllIntoManager();
@@ -183,14 +188,17 @@ public class WorldMapClient implements ClientModInitializer {
             ClientMapManager.clear();
             ClientMapStorage.clearCurrentServer();
             WaypointManager.clearGlobalWaypoints();
+            WaypointManager.setServerWaypointSharingAvailable(false);
             wasDead = false;
         });
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(com.runterya.worldmap.network.SyncGlobalWaypointsPayload.ID, (payload, ctx) -> {
             ctx.client().execute(() -> {
+                java.util.List<Waypoint> syncedWaypoints = new java.util.ArrayList<>();
                 for (com.runterya.worldmap.network.SyncGlobalWaypointsPayload.GlobalWaypoint wp : payload.waypoints()) {
-                    WaypointManager.addGlobalWaypoint(new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(), true));
+                    syncedWaypoints.add(new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(), true));
                 }
+                WaypointManager.replaceGlobalWaypoints(syncedWaypoints);
             });
         });
 

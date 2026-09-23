@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import net.fabricmc.loader.api.FabricLoader;
+import com.runterya.worldmap.client.ClientMapStorage;
+import com.runterya.worldmap.network.AddGlobalWaypointPayload;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -15,6 +17,7 @@ public class WaypointManager {
     private static final File WAYPOINTS_FILE = new File(FabricLoader.getInstance().getConfigDir().toFile(), "worldmap_waypoints.json");
     private static List<Waypoint> waypoints = new ArrayList<>();
     private static List<Waypoint> globalWaypoints = new ArrayList<>();
+    private static boolean serverWaypointSharingAvailable;
 
     public static void load() {
         if (WAYPOINTS_FILE.exists()) {
@@ -39,14 +42,17 @@ public class WaypointManager {
     }
 
     public static void addWaypoint(Waypoint wp) {
-        if (wp.isGlobal()) {
-            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new com.runterya.worldmap.network.AddGlobalWaypointPayload(
+        if (wp.isGlobal() && serverWaypointSharingAvailable) {
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                 wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(), wp.getDimension()
             ));
-        } else {
-            waypoints.add(wp);
-            save();
+            return;
         }
+
+        wp.setGlobal(false);
+        wp.setWorldId(ClientMapStorage.getWaypointWorldId());
+        waypoints.add(wp);
+        save();
     }
 
     public static void removeWaypoint(Waypoint wp) {
@@ -59,7 +65,16 @@ public class WaypointManager {
     }
 
     public static void addGlobalWaypoint(Waypoint wp) {
+        wp.setGlobal(true);
+        wp.setWorldId(ClientMapStorage.getWaypointWorldId());
         globalWaypoints.add(wp);
+    }
+
+    public static void replaceGlobalWaypoints(List<Waypoint> syncedWaypoints) {
+        globalWaypoints.clear();
+        for (Waypoint waypoint : syncedWaypoints) {
+            addGlobalWaypoint(waypoint);
+        }
     }
     
     public static void clearGlobalWaypoints() {
@@ -67,8 +82,31 @@ public class WaypointManager {
     }
 
     public static List<Waypoint> getWaypoints() {
+        String currentWorldId = ClientMapStorage.getWaypointWorldId();
         List<Waypoint> all = new ArrayList<>(waypoints);
         all.addAll(globalWaypoints);
+        all.removeIf(waypoint -> !waypoint.getWorldId().equals(currentWorldId));
         return all;
+    }
+
+    /** Assign older, unscoped local waypoints to the first world they are opened in. */
+    public static void bindLegacyWaypointsToCurrentWorld() {
+        String currentWorldId = ClientMapStorage.getWaypointWorldId();
+        boolean changed = false;
+        for (Waypoint waypoint : waypoints) {
+            if (waypoint.getWorldId().isEmpty()) {
+                waypoint.setWorldId(currentWorldId);
+                changed = true;
+            }
+        }
+        if (changed) save();
+    }
+
+    public static void setServerWaypointSharingAvailable(boolean available) {
+        serverWaypointSharingAvailable = available;
+    }
+
+    public static boolean isServerWaypointSharingAvailable() {
+        return serverWaypointSharingAvailable;
     }
 }

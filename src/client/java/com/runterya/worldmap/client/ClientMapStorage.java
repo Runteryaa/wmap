@@ -41,6 +41,23 @@ public class ClientMapStorage {
         return currentServerId;
     }
 
+    /** Stable waypoint scope for the connected server or individual local save. */
+    public static String getWaypointWorldId() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.getCurrentServer() != null) {
+            return "server_" + sanitize(mc.getCurrentServer().ip);
+        }
+        if (mc.getSingleplayerServer() != null) {
+            String worldPath = mc.getSingleplayerServer()
+                .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .toAbsolutePath()
+                .normalize()
+                .toString();
+            return "singleplayer_" + sanitize(worldPath);
+        }
+        return currentServerId == null ? "unknown" : currentServerId;
+    }
+
     private static String sanitize(String name) {
         if (name == null) return "unknown";
         return name.replaceAll("[^a-zA-Z0-9._\\-]", "_");
