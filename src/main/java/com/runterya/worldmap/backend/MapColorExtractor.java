@@ -80,9 +80,9 @@ public class MapColorExtractor {
                     if (tint != -1) {
                         textureColor = multiplyColors(textureColor, tint);
                     }
-                    // Texture averages are less saturated/darker than the rendered
-                    // block face after map-style shading, so compensate before shade.
-                    argb = applyBrightness(scaleColor(textureColor, 1.2f), brightness);
+                    // Apply the map's terrain shade directly; an extra texture
+                    // boost washed out stone and other neutral blocks.
+                    argb = applyBrightness(textureColor, brightness);
                 } else if (tint != -1) {
                     argb = applyBrightness(tint, brightness);
                 }
@@ -110,13 +110,6 @@ public class MapColorExtractor {
         int r = (((base >> 16) & 0xFF) * ((tint >> 16) & 0xFF)) / 255;
         int g = (((base >> 8) & 0xFF) * ((tint >> 8) & 0xFF)) / 255;
         int b = ((base & 0xFF) * (tint & 0xFF)) / 255;
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
-    }
-
-    private static int scaleColor(int color, float scale) {
-        int r = Math.min(255, Math.round(((color >> 16) & 0xFF) * scale));
-        int g = Math.min(255, Math.round(((color >> 8) & 0xFF) * scale));
-        int b = Math.min(255, Math.round((color & 0xFF) * scale));
         return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
