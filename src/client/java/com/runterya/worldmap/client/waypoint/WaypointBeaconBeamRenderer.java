@@ -16,14 +16,12 @@ public final class WaypointBeaconBeamRenderer {
     private static final double MAX_DISTANCE_SQUARED = 512.0 * 512.0;
     private static final int BEAM_START_Y = -128;
 
-    private static volatile List<BeamState> extractedBeams = List.of();
     private static volatile List<BeamState> preparedBeams = List.of();
 
     private WaypointBeaconBeamRenderer() {}
 
     public static void initialize() {
         ClientTickEvents.END_CLIENT_TICK.register(WaypointBeaconBeamRenderer::tick);
-        LevelRenderEvents.END_EXTRACTION.register(context -> extractedBeams = preparedBeams);
         LevelRenderEvents.COLLECT_SUBMITS.register(WaypointBeaconBeamRenderer::render);
     }
 
@@ -57,7 +55,7 @@ public final class WaypointBeaconBeamRenderer {
     }
 
     private static void render(LevelRenderContext context) {
-        List<BeamState> beams = extractedBeams;
+        List<BeamState> beams = preparedBeams;
         if (beams.isEmpty()) return;
 
         Vec3 camera = context.levelState().cameraRenderState.pos;
