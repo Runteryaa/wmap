@@ -162,6 +162,7 @@ public class WorldMapScreen extends Screen {
             
             com.runterya.worldmap.client.waypoint.Waypoint clickedWaypoint = null;
             for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
+                if (!wp.getDimension().equals(dim)) continue;
                 if (Math.abs(wp.getX() - worldX) <= clickTolerance && Math.abs(wp.getZ() - worldZ) <= clickTolerance) {
                     clickedWaypoint = wp;
                     break;
@@ -169,10 +170,7 @@ public class WorldMapScreen extends Screen {
             }
             
             if (clickedWaypoint != null) {
-                com.runterya.worldmap.client.waypoint.WaypointManager.removeWaypoint(clickedWaypoint);
-                if (Minecraft.getInstance().player != null) {
-                    Minecraft.getInstance().player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Waypoint removed!"));
-                }
+                Minecraft.getInstance().setScreen(new WaypointContextMenuScreen(this, clickedWaypoint));
             } else {
                 int blockY = 64; // Default Y
                 if (Minecraft.getInstance().player != null) {

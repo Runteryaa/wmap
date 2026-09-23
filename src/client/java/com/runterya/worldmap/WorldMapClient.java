@@ -167,7 +167,9 @@ public class WorldMapClient implements ClientModInitializer {
             ctx.client().execute(() -> {
                 java.util.List<Waypoint> syncedWaypoints = new java.util.ArrayList<>();
                 for (com.runterya.worldmap.network.SyncGlobalWaypointsPayload.GlobalWaypoint wp : payload.waypoints()) {
-                    syncedWaypoints.add(new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(), true));
+                    Waypoint waypoint = new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(), true);
+                    waypoint.setGlobalId(wp.id());
+                    syncedWaypoints.add(waypoint);
                 }
                 WaypointManager.replaceGlobalWaypoints(syncedWaypoints);
             });

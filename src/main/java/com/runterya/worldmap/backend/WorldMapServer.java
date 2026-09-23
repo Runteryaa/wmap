@@ -104,12 +104,25 @@ public class WorldMapServer {
 
         ServerPlayNetworking.registerGlobalReceiver(AddGlobalWaypointPayload.ID, (payload, context) -> {
             context.server().execute(() -> {
-                SyncGlobalWaypointsPayload.GlobalWaypoint wp = new SyncGlobalWaypointsPayload.GlobalWaypoint(
-                    payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
-                );
-                globalWaypoints.add(wp);
+                boolean changed = switch (payload.action()) {
+                    case ADD -> {
+                        globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
+                            UUID.randomUUID().toString(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
+                        ));
+                        yield true;
+                    }
+                    case UPDATE -> {
+                        int index = findGlobalWaypoint(payload.id());
+                        if (index < 0) yield false;
+                        globalWaypoints.set(index, new SyncGlobalWaypointsPayload.GlobalWaypoint(
+                            payload.id(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
+                        ));
+                        yield true;
+                    }
+                    case REMOVE -> globalWaypoints.removeIf(wp -> wp.id() != null && wp.id().equals(payload.id()));
+                };
+                if (!changed) return;
                 saveGlobalWaypoints();
-                
                 SyncGlobalWaypointsPayload syncPayload = new SyncGlobalWaypointsPayload(new ArrayList<>(globalWaypoints));
                 for (ServerPlayer player : context.server().getPlayerList().getPlayers()) {
                     if (MODDED_PLAYERS.contains(player.getUUID())) {
@@ -140,6 +153,14 @@ public class WorldMapServer {
         ServerTickEvents.END_SERVER_TICK.register(WorldMapServer::tick);
     }
 
+    private static int findGlobalWaypoint(String id) {
+        if (id == null || id.isEmpty()) return -1;
+        for (int i = 0; i < globalWaypoints.size(); i++) {
+            if (id.equals(globalWaypoints.get(i).id())) return i;
+        }
+        return -1;
+    }
+
     /**
      * Enqueue newly visible chunks (difference between old and new view) for processing.
      */
@@ -166,7 +187,18 @@ public class WorldMapServer {
                 List<SyncGlobalWaypointsPayload.GlobalWaypoint> loaded = GSON.fromJson(reader, listType);
                 if (loaded != null) {
                     globalWaypoints.clear();
-                    globalWaypoints.addAll(loaded);
+                    boolean migrated = false;
+                    for (SyncGlobalWaypointsPayload.GlobalWaypoint wp : loaded) {
+                        if (wp.id() == null || wp.id().isEmpty()) {
+                            globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
+                                UUID.randomUUID().toString(), wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension()
+                            ));
+                            migrated = true;
+                        } else {
+                            globalWaypoints.add(wp);
+                        }
+                    }
+                    if (migrated) saveGlobalWaypoints();
                 }
             } catch (Exception e) {
                 e.printStackTrace();

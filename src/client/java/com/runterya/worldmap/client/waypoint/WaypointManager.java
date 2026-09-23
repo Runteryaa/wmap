@@ -44,7 +44,7 @@ public class WaypointManager {
     public static void addWaypoint(Waypoint wp) {
         if (wp.isGlobal() && serverWaypointSharingAvailable) {
             net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
-                wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(), wp.getDimension()
+                AddGlobalWaypointPayload.Action.ADD, "", wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(), wp.getDimension()
             ));
             return;
         }
@@ -57,9 +57,32 @@ public class WaypointManager {
 
     public static void removeWaypoint(Waypoint wp) {
         if (wp.isGlobal()) {
-            // Removing global waypoints is not supported yet
+            if (serverWaypointSharingAvailable && !wp.getGlobalId().isEmpty()) {
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
+                    AddGlobalWaypointPayload.Action.REMOVE, wp.getGlobalId(), "", 0, 0, 0, 0, wp.getDimension()
+                ));
+            }
         } else {
             waypoints.remove(wp);
+            save();
+        }
+    }
+
+    public static void updateWaypoint(Waypoint original, Waypoint updated) {
+        if (original.isGlobal()) {
+            if (serverWaypointSharingAvailable && !original.getGlobalId().isEmpty()) {
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
+                    AddGlobalWaypointPayload.Action.UPDATE, original.getGlobalId(), updated.getName(), updated.getX(), updated.getY(),
+                    updated.getZ(), updated.getColor(), updated.getDimension()
+                ));
+            }
+            return;
+        }
+        int index = waypoints.indexOf(original);
+        if (index >= 0) {
+            updated.setGlobal(false);
+            updated.setWorldId(original.getWorldId());
+            waypoints.set(index, updated);
             save();
         }
     }

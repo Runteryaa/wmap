@@ -15,6 +15,7 @@ public class WaypointAddScreen extends Screen {
     private final int x, y, z;
     private final String dimension;
     private final Screen parent;
+    private final Waypoint editingWaypoint;
 
     public WaypointAddScreen(Screen parent, int x, int y, int z, String dimension) {
         super(Component.literal("Add Waypoint"));
@@ -23,6 +24,17 @@ public class WaypointAddScreen extends Screen {
         this.y = y;
         this.z = z;
         this.dimension = dimension;
+        this.editingWaypoint = null;
+    }
+
+    public WaypointAddScreen(Screen parent, Waypoint waypoint) {
+        super(Component.literal("Edit Waypoint"));
+        this.parent = parent;
+        this.x = waypoint.getX();
+        this.y = waypoint.getY();
+        this.z = waypoint.getZ();
+        this.dimension = waypoint.getDimension();
+        this.editingWaypoint = waypoint;
     }
 
     private EditBox xField;
@@ -41,7 +53,7 @@ public class WaypointAddScreen extends Screen {
         int centerY = this.height / 2;
 
         this.nameField = new EditBox(this.font, centerX - 100, centerY - 80, 200, 20, Component.literal("Waypoint Name"));
-        this.nameField.setValue("New Waypoint");
+        this.nameField.setValue(this.editingWaypoint == null ? "New Waypoint" : this.editingWaypoint.getName());
         this.addRenderableWidget(this.nameField);
         this.setInitialFocus(this.nameField);
 
@@ -57,7 +69,7 @@ public class WaypointAddScreen extends Screen {
         this.zField.setValue(String.valueOf(this.z));
         this.addRenderableWidget(this.zField);
 
-        this.currentColor = new java.util.Random().nextInt(0xFFFFFF);
+        this.currentColor = this.editingWaypoint == null ? new java.util.Random().nextInt(0xFFFFFF) : this.editingWaypoint.getColor() & 0xFFFFFF;
         this.colorField = new EditBox(this.font, centerX - 100, centerY - 20, 60, 20, Component.literal("Color Hex"));
         this.colorField.setValue(String.format("%06X", this.currentColor));
         this.colorField.setMaxLength(6);
@@ -68,14 +80,14 @@ public class WaypointAddScreen extends Screen {
         });
         this.addRenderableWidget(this.colorField);
 
-        if (WaypointManager.isServerWaypointSharingAvailable()) {
+        if (this.editingWaypoint == null && WaypointManager.isServerWaypointSharingAvailable()) {
             this.addRenderableWidget(Button.builder(visibilityLabel(), button -> {
                 this.isGlobal = !this.isGlobal;
                 button.setMessage(visibilityLabel());
             }).bounds(centerX + 10, centerY - 20, 180, 20).build());
         }
 
-        this.addRenderableWidget(Button.builder(Component.literal("Add"), button -> {
+        this.addRenderableWidget(Button.builder(Component.literal(this.editingWaypoint == null ? "Add" : "Save"), button -> {
             int color = 0xFF000000 | this.currentColor;
             int finalX = this.x;
             int finalY = this.y;
@@ -84,10 +96,12 @@ public class WaypointAddScreen extends Screen {
             try { finalY = Integer.parseInt(this.yField.getValue()); } catch (Exception ignored) {}
             try { finalZ = Integer.parseInt(this.zField.getValue()); } catch (Exception ignored) {}
 
-            Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension, this.isGlobal);
-            WaypointManager.addWaypoint(wp);
+            Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension,
+                this.editingWaypoint == null ? this.isGlobal : this.editingWaypoint.isGlobal());
+            if (this.editingWaypoint == null) WaypointManager.addWaypoint(wp);
+            else WaypointManager.updateWaypoint(this.editingWaypoint, wp);
             if (this.minecraft != null && this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal("Waypoint added!"));
+                this.minecraft.player.sendSystemMessage(Component.literal(this.editingWaypoint == null ? "Waypoint added!" : "Waypoint updated!"));
             }
             this.minecraft.setScreen(this.parent);
         }).bounds(centerX - 100, centerY + 20, 98, 20).build());

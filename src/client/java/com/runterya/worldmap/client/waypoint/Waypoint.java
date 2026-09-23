@@ -9,6 +9,7 @@ public class Waypoint {
     private String dimension;
     private boolean isGlobal;
     private String worldId;
+    private String globalId;
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal) {
         this(name, x, y, z, color, dimension, isGlobal, "");
@@ -35,4 +36,6 @@ public class Waypoint {
     public void setGlobal(boolean global) { this.isGlobal = global; }
     public String getWorldId() { return worldId == null ? "" : worldId; }
     public void setWorldId(String worldId) { this.worldId = worldId; }
+    public String getGlobalId() { return globalId == null ? "" : globalId; }
+    public void setGlobalId(String globalId) { this.globalId = globalId; }
 }
