@@ -66,8 +66,8 @@ public class WorldMapServer {
     /** Track chunks that had block updates and need extraction & broadcast. */
     private static final Set<LevelChunk> dirtyChunks = ConcurrentHashMap.newKeySet();
 
-    /** Chunks for which a client has supplied the biome-aware vanilla tint. */
-    private static final Set<Long> clientTintedChunks = ConcurrentHashMap.newKeySet();
+    /** Latest client-resolved colors; also serves joins while disk persistence is pending. */
+    private static final java.util.Map<Long, int[]> clientTintedChunks = new ConcurrentHashMap<>();
 
     private static long chunkKey(int chunkX, int chunkZ) {
         return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
@@ -83,7 +83,7 @@ public class WorldMapServer {
                 }
                 // Client biome color resources are authoritative for map tinting;
                 // persist and share the vanilla-resolved colors it reports.
-                clientTintedChunks.add(chunkKey(payload.chunkX(), payload.chunkZ()));
+                clientTintedChunks.put(chunkKey(payload.chunkX(), payload.chunkZ()), payload.colors().clone());
                 broadcastMapUpdate(context.server(), payload.chunkX(), payload.chunkZ(), payload.colors());
             });
         });
@@ -169,7 +169,8 @@ public class WorldMapServer {
             chunkPos -> {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
-                int[] saved = storage == null ? null : storage.getChunk(cx, cz);
+                int[] saved = clientTintedChunks.get(chunkKey(cx, cz));
+                if (saved == null && storage != null) saved = storage.getChunk(cx, cz);
                 if (saved != null) {
                     ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
                 } else {
@@ -220,9 +221,15 @@ public class WorldMapServer {
      * Extract and send a single chunk's map data, saving to disk async.
      */
     private static void processChunkTask(ChunkTask task, MinecraftServer server) {
-        if (clientTintedChunks.contains(chunkKey(task.cx(), task.cz()))) return;
         ServerPlayer player = server.getPlayerList().getPlayer(task.playerUUID());
         if (player == null || !MODDED_PLAYERS.contains(task.playerUUID())) return;
+
+        long key = chunkKey(task.cx(), task.cz());
+        int[] clientColors = clientTintedChunks.get(key);
+        if (clientColors != null) {
+            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), clientColors));
+            return;
+        }
 
         ServerLevel level = (ServerLevel) player.level();
         LevelChunk chunk = level.getChunkSource().getChunkNow(task.cx(), task.cz());
@@ -231,7 +238,8 @@ public class WorldMapServer {
         // Read the live chunk only on the server thread. Extracting it on a worker
         // thread raced block updates and could publish partial/older colors.
         int[] colors = MapColorExtractor.extract(chunk);
-        if (clientTintedChunks.contains(chunkKey(task.cx(), task.cz()))) return;
+        clientColors = clientTintedChunks.get(key);
+        if (clientColors != null) colors = clientColors;
         if (server.getPlayerList().getPlayer(task.playerUUID()) != null) {
             ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), colors));
         }
@@ -259,10 +267,10 @@ public class WorldMapServer {
                 
                 int cx = dirtyChunk.getPos().getMinBlockX() >> 4;
                 int cz = dirtyChunk.getPos().getMinBlockZ() >> 4;
-                if (clientTintedChunks.contains(chunkKey(cx, cz))) continue;
+                if (clientTintedChunks.containsKey(chunkKey(cx, cz))) continue;
 
                 int[] colors = MapColorExtractor.extract(dirtyChunk);
-                if (!clientTintedChunks.contains(chunkKey(cx, cz))) {
+                if (!clientTintedChunks.containsKey(chunkKey(cx, cz))) {
                     broadcastMapUpdate(server, cx, cz, colors);
                 }
                 

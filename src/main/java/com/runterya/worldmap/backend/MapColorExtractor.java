@@ -74,9 +74,16 @@ public class MapColorExtractor {
                 }
                 prevY = pos.getY();
 
+                // Water color represents biome tint plus depth. Applying the
+                // terrain slope shade to it creates abrupt light/dark patches
+                // across otherwise continuous lakes and oceans.
+                MapColor.Brightness renderedBrightness = mapColor == MapColor.WATER
+                    ? MapColor.Brightness.NORMAL
+                    : brightness;
+
                 // Use the real block texture where the client can resolve it;
                 // MapColor remains the safe fallback for dedicated servers.
-                int argb = mapColor.calculateARGBColor(brightness);
+                int argb = mapColor.calculateARGBColor(renderedBrightness);
 
                 int tint = tintResolver.resolve(chunk, pos, state, mapColor);
                 if (tint == 0xFFFF00FF) tint = -1;
@@ -88,9 +95,9 @@ public class MapColorExtractor {
                     }
                     // Apply the map's terrain shade directly; an extra texture
                     // boost washed out stone and other neutral blocks.
-                    argb = applyBrightness(textureColor, brightness);
+                    argb = applyBrightness(textureColor, renderedBrightness);
                 } else if (tint != -1) {
-                    argb = applyBrightness(tint, brightness);
+                    argb = applyBrightness(tint, renderedBrightness);
                 }
 
                 if (mapColor == MapColor.WATER) {
