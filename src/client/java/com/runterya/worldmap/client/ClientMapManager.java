@@ -22,6 +22,8 @@ public class ClientMapManager {
     private static List<PlayerPos> otherPlayers = Collections.emptyList();
     private static final Queue<LevelChunk> pendingChunks = new ConcurrentLinkedQueue<>();
     private static final Set<LevelChunk> pendingChunkSet = ConcurrentHashMap.newKeySet();
+    /** Chunks resolved from this client's actual loaded world and tint resources. */
+    private static final Set<Long> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
 
     /** Clear all in-memory map data (call on world disconnect). */
     public static void clear() {
@@ -30,6 +32,7 @@ public class ClientMapManager {
         otherPlayers = Collections.emptyList();
         pendingChunks.clear();
         pendingChunkSet.clear();
+        locallyResolvedChunks.clear();
     }
 
     /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
@@ -52,7 +55,7 @@ public class ClientMapManager {
             int chunkX = chunk.getPos().x();
             int chunkZ = chunk.getPos().z();
             int[] colors = ClientMapColorExtractor.extract(chunk);
-            receiveUpdate(chunkX, chunkZ, colors);
+            receiveLocalUpdate(chunkX, chunkZ, colors);
             ClientMapStorage.saveChunk(chunkX, chunkZ, colors);
 
             if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
@@ -68,6 +71,26 @@ public class ClientMapManager {
 
         RegionTexture region = regions.computeIfAbsent(regionPos, RegionTexture::new);
         region.updateChunk(chunkX & 31, chunkZ & 31, colors);
+    }
+
+    /** Apply a locally extracted chunk and protect it from stale network copies. */
+    public static void receiveLocalUpdate(int chunkX, int chunkZ, int[] colors) {
+        locallyResolvedChunks.add(chunkKey(chunkX, chunkZ));
+        receiveUpdate(chunkX, chunkZ, colors);
+    }
+
+    /**
+     * Server data fills unexplored areas, but a loaded chunk's local extraction
+     * is newer and must not be replaced by a delayed packet from another source.
+     */
+    public static boolean receiveServerUpdate(int chunkX, int chunkZ, int[] colors) {
+        if (locallyResolvedChunks.contains(chunkKey(chunkX, chunkZ))) return false;
+        receiveUpdate(chunkX, chunkZ, colors);
+        return true;
+    }
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
     }
 
     public static void updatePlayerPositions(List<PlayerPos> positions) {

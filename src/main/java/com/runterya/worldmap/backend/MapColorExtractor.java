@@ -23,10 +23,16 @@ public class MapColorExtractor {
     }
 
     public static int[] extract(LevelChunk chunk) {
-        // The dedicated server has no client biome colormap resources. Leave
-        // biome-tinted pixels at their MapColor base; clients replace them with
-        // the vanilla block tint once they have the chunk loaded.
-        return extract(chunk, (ignoredChunk, ignoredPos, ignoredState, ignoredMapColor) -> -1);
+        // Biome water color is world data, so the dedicated server can resolve
+        // it too. Using the same tint on both sides prevents unexplored chunks
+        // from appearing as bright vanilla MapColor blue until a client report
+        // replaces them.
+        return extract(chunk, (sourceChunk, pos, ignoredState, mapColor) -> {
+            if (mapColor == MapColor.WATER) {
+                return 0xFF000000 | (sourceChunk.getLevel().getBiome(pos).value().getWaterColor() & 0xFFFFFF);
+            }
+            return -1;
+        });
     }
 
     /**
@@ -103,8 +109,11 @@ public class MapColorExtractor {
         return colors;
     }
 
-    private static final float WATER_DARKENING_PER_BLOCK = 0.985f;
-    private static final float MIN_WATER_BRIGHTNESS = 0.2f;
+    // A gentle per-block curve preserves a visible depth gradient without
+    // flattening deep seas into near-black. At 20/40/60 blocks the tint keeps
+    // about 85/73/62 percent brightness, then bottoms out at 45 percent.
+    private static final float WATER_DARKENING_PER_BLOCK = 0.992f;
+    private static final float MIN_WATER_BRIGHTNESS = 0.45f;
 
     private static int multiplyColors(int base, int tint) {
         int r = (((base >> 16) & 0xFF) * ((tint >> 16) & 0xFF)) / 255;
