@@ -97,7 +97,8 @@ public class WorldMapScreen extends Screen {
         double mouseWorldX = (mouseX - centerX) / scale - panX;
         double mouseWorldZ = (mouseY - centerY) / scale - panY;
         String coordText = String.format("X: %d, Z: %d", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
-        graphics.text(font, coordText, 5, 5, 0xFFFFFF, true);
+        graphics.fill(3, 3, font.width(coordText) + 8, font.lineHeight + 7, 0x99000000);
+        graphics.text(font, coordText, 5, 5, 0xFFFFFFFF, true);
     }
 
     private void drawPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
