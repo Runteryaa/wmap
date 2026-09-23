@@ -13,14 +13,20 @@ public class MapColorExtractor {
          * Returns the block's tint, or -1 when it has no tint or cannot be
          * resolved in the current environment.
          */
-        int resolve(LevelChunk chunk, BlockPos pos, MapColor mapColor);
+        int resolve(LevelChunk chunk, BlockPos pos, BlockState state, MapColor mapColor);
+    }
+
+    @FunctionalInterface
+    public interface BlockTextureColorResolver {
+        /** Returns an opaque average of the visible top-face texture, or -1 if unavailable. */
+        int resolve(BlockState state, BlockPos pos);
     }
 
     public static int[] extract(LevelChunk chunk) {
         // The dedicated server has no client biome colormap resources. Leave
         // biome-tinted pixels at their MapColor base; clients replace them with
         // the vanilla block tint once they have the chunk loaded.
-        return extract(chunk, (ignoredChunk, ignoredPos, ignoredMapColor) -> -1);
+        return extract(chunk, (ignoredChunk, ignoredPos, ignoredState, ignoredMapColor) -> -1);
     }
 
     /**
@@ -29,6 +35,11 @@ public class MapColorExtractor {
      * the client passes Minecraft's block tint sources here.
      */
     public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver) {
+        return extract(chunk, tintResolver, (state, pos) -> -1);
+    }
+
+    /** Extracts colors from block textures, biome tints, map colors, and terrain shading. */
+    public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver, BlockTextureColorResolver textureResolver) {
         int[] colors = new int[256];
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
@@ -57,14 +68,22 @@ public class MapColorExtractor {
                 }
                 prevY = pos.getY();
 
-                // Compute base ARGB color based on the MapColor and 3D shading
+                // Use the real block texture where the client can resolve it;
+                // MapColor remains the safe fallback for dedicated servers.
                 int argb = mapColor.calculateARGBColor(brightness);
 
-                // Ask the client for every block's registered tint source.
-                // New blocks can use fixed or custom tints even when their
-                // MapColor is not one of the three classic biome categories.
-                int tint = tintResolver.resolve(chunk, pos, mapColor);
-                if (tint != -1 && tint != 0xFFFF00FF) {
+                int tint = tintResolver.resolve(chunk, pos, state, mapColor);
+                if (tint == 0xFFFF00FF) tint = -1;
+                int textureColor = mapColor == MapColor.WATER ? -1 : textureResolver.resolve(state, pos);
+
+                if (textureColor != -1) {
+                    if (tint != -1) {
+                        textureColor = multiplyColors(textureColor, tint);
+                    }
+                    // Texture averages are less saturated/darker than the rendered
+                    // block face after map-style shading, so compensate before shade.
+                    argb = applyBrightness(scaleColor(textureColor, 1.2f), brightness);
+                } else if (tint != -1) {
                     argb = applyBrightness(tint, brightness);
                 }
 
@@ -73,7 +92,7 @@ public class MapColorExtractor {
                     // Minecraft's biome water color.
                     int oceanFloorY = chunk.getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
                     int depth = Math.max(0, pos.getY() - oceanFloorY);
-                    float factor = Math.max(0.4f, 1.0f - (depth * 0.04f));
+                    float factor = Math.max(MIN_WATER_BRIGHTNESS, 1.0f - (depth * WATER_DARKENING_PER_BLOCK));
                     argb = darkenColor(argb, factor);
                 }
 
@@ -81,6 +100,23 @@ public class MapColorExtractor {
             }
         }
         return colors;
+    }
+
+    private static final float WATER_DARKENING_PER_BLOCK = 0.04f;
+    private static final float MIN_WATER_BRIGHTNESS = 0.4f;
+
+    private static int multiplyColors(int base, int tint) {
+        int r = (((base >> 16) & 0xFF) * ((tint >> 16) & 0xFF)) / 255;
+        int g = (((base >> 8) & 0xFF) * ((tint >> 8) & 0xFF)) / 255;
+        int b = ((base & 0xFF) * (tint & 0xFF)) / 255;
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    private static int scaleColor(int color, float scale) {
+        int r = Math.min(255, Math.round(((color >> 16) & 0xFF) * scale));
+        int g = Math.min(255, Math.round(((color >> 8) & 0xFF) * scale));
+        int b = Math.min(255, Math.round((color & 0xFF) * scale));
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     private static int applyBrightness(int color, MapColor.Brightness brightness) {
