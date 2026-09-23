@@ -39,6 +39,11 @@ jobs:
           distribution: 'microsoft'
       - name: Make gradle wrapper executable
         run: chmod +x ./gradlew
+      - name: Select version-specific client compatibility layer
+        run: >-
+          cp
+          src/client-${{ matrix.minecraft_version }}/java/com/runterya/worldmap/client/ClientPlatform.java
+          src/client/java/com/runterya/worldmap/client/ClientPlatform.java
       - name: Build for Minecraft ${{ matrix.minecraft_version }}
         run: >-
           ./gradlew build
