@@ -239,12 +239,12 @@ public class WorldMapServer {
         // thread raced block updates and could publish partial/older colors.
         int[] colors = MapColorExtractor.extract(chunk);
         clientColors = clientTintedChunks.get(key);
-        if (clientColors != null) colors = clientColors;
+        int[] resolvedColors = clientColors != null ? clientColors : colors;
         if (server.getPlayerList().getPlayer(task.playerUUID()) != null) {
-            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), colors));
+            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), resolvedColors));
         }
         if (storage != null) {
-            ioExecutor.submit(() -> storage.updateChunk(task.cx(), task.cz(), colors));
+            ioExecutor.submit(() -> storage.updateChunk(task.cx(), task.cz(), resolvedColors));
         }
     }
 
