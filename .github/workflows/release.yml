@@ -19,6 +19,13 @@ jobs:
         include:
           - minecraft_version: 26.1.2
             fabric_api_version: 0.151.0+26.1.2
+            loom_version: 1.16-SNAPSHOT
+          - minecraft_version: 26.2
+            fabric_api_version: 0.161.0+26.2
+            loom_version: 1.17.9
+          - minecraft_version: 26.3
+            fabric_api_version: 0.161.0+26.3
+            loom_version: 1.17.9
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -37,6 +44,7 @@ jobs:
           ./gradlew build
           -Pminecraft_version=${{ matrix.minecraft_version }}
           -Pfabric_api_version=${{ matrix.fabric_api_version }}
+          -Ploom_version=${{ matrix.loom_version }}
       - name: Save version-specific jar
         uses: actions/upload-artifact@v4
         with:
