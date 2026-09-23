@@ -69,17 +69,14 @@ public class WorldMapScreen extends Screen {
             drawPlayerArrow(graphics,
                 centerX + (player.getX() + panX) * scale,
                 centerY + (player.getZ() + panY) * scale,
-                player.getYRot(), 0xFFFFFFFF);
+                player.getYRot() + 180.0f, 0xFFFFFFFF);
         }
 
         for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
             if (Minecraft.getInstance().player != null && player.uuid().equals(Minecraft.getInstance().player.getUUID())) {
                 continue;
             }
-            drawPlayerArrow(graphics,
-                centerX + (player.x() + panX) * scale,
-                centerY + (player.z() + panY) * scale,
-                player.yaw(), colorForPlayer(player.uuid()));
+            drawOtherPlayer(graphics, font, player, centerX, centerY);
         }
         
         // Render waypoints in screen space
@@ -112,14 +109,46 @@ public class WorldMapScreen extends Screen {
         graphics.text(font, coordText, 5, 5, 0xFFFFFF, true);
     }
 
+    private void drawOtherPlayer(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                 net.minecraft.client.gui.Font font,
+                                 com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player,
+                                 int centerX, int centerY) {
+        double screenX = centerX + (player.x() + panX) * scale;
+        double screenY = centerY + (player.z() + panY) * scale;
+        double dx = screenX - centerX;
+        double dy = screenY - centerY;
+        int color = colorForPlayer(player.uuid());
+        boolean onScreen = screenX >= 10 && screenX <= width - 10
+            && screenY >= 10 && screenY <= height - 24;
+
+        if (onScreen) {
+            drawPlayerArrow(graphics, screenX, screenY, player.yaw() + 180.0f, color);
+        } else {
+            double halfWidth = Math.max(1, width / 2.0 - 16);
+            double halfHeight = Math.max(1, height / 2.0 - 28);
+            double scaleToEdge = Math.min(
+                dx == 0 ? Double.POSITIVE_INFINITY : halfWidth / Math.abs(dx),
+                dy == 0 ? Double.POSITIVE_INFINITY : halfHeight / Math.abs(dy)
+            );
+            double edgeX = centerX + dx * scaleToEdge;
+            double edgeY = centerY + dy * scaleToEdge;
+            float towardPlayer = (float) Math.toDegrees(Math.atan2(dx, -dy));
+            drawPlayerArrow(graphics, edgeX, edgeY, towardPlayer, color);
+            screenX = edgeX;
+            screenY = edgeY;
+        }
+
+        drawPlayerName(graphics, font, player.name(), screenX, screenY);
+    }
+
     private void drawPlayerArrow(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
-                                 double screenX, double screenY, float yaw, int color) {
+                                 double screenX, double screenY, float rotationDegrees, int color) {
         if (screenX < -10 || screenX > width + 10 || screenY < -10 || screenY > height + 10) return;
 
         graphics.pose().pushMatrix();
         graphics.pose().translate((float) screenX, (float) screenY);
         // The arrow points north before rotation; Minecraft yaw 0 faces south.
-        graphics.pose().rotate((float) Math.toRadians(yaw + 180.0));
+        graphics.pose().rotate((float) Math.toRadians(rotationDegrees));
 
         // Pixel-style arrow with a dark outline, drawn at a fixed screen size.
         graphics.fill(-1, -6, 1, -2, 0xFF000000);
@@ -131,6 +160,18 @@ public class WorldMapScreen extends Screen {
         graphics.fill(-3, -1, 3, 1, color);
         graphics.fill(-1, 1, 1, 5, color);
         graphics.pose().popMatrix();
+    }
+
+    private void drawPlayerName(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                net.minecraft.client.gui.Font font, String name,
+                                double markerX, double markerY) {
+        int textWidth = font.width(name);
+        int labelX = (int) Math.round(Math.max(textWidth / 2.0 + 2,
+            Math.min(width - textWidth / 2.0 - 2, markerX)));
+        int labelY = (int) Math.round(Math.min(height - font.lineHeight - 2, markerY + 10));
+        graphics.fill(labelX - textWidth / 2 - 2, labelY - 1,
+            labelX + textWidth / 2 + 2, labelY + font.lineHeight, 0x99000000);
+        graphics.centeredText(font, name, labelX, labelY, 0xFFFFFFFF);
     }
 
     private static int colorForPlayer(UUID uuid) {
