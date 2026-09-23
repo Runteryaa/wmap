@@ -120,25 +120,36 @@ public class WorldMapScreen extends Screen {
         int color = colorForPlayer(player.uuid());
         boolean onScreen = screenX >= 10 && screenX <= width - 10
             && screenY >= 10 && screenY <= height - 24;
+        double[] markerPosition = playerMarkerPosition(player, centerX, centerY);
 
         if (onScreen) {
-            drawPlayerArrow(graphics, screenX, screenY, player.yaw() + 180.0f, color);
+            drawPlayerArrow(graphics, markerPosition[0], markerPosition[1], player.yaw() + 180.0f, color);
         } else {
-            double halfWidth = Math.max(1, width / 2.0 - 16);
-            double halfHeight = Math.max(1, height / 2.0 - 28);
-            double scaleToEdge = Math.min(
-                dx == 0 ? Double.POSITIVE_INFINITY : halfWidth / Math.abs(dx),
-                dy == 0 ? Double.POSITIVE_INFINITY : halfHeight / Math.abs(dy)
-            );
-            double edgeX = centerX + dx * scaleToEdge;
-            double edgeY = centerY + dy * scaleToEdge;
             float towardPlayer = (float) Math.toDegrees(Math.atan2(dx, -dy));
-            drawPlayerArrow(graphics, edgeX, edgeY, towardPlayer, color);
-            screenX = edgeX;
-            screenY = edgeY;
+            drawPlayerArrow(graphics, markerPosition[0], markerPosition[1], towardPlayer, color);
         }
 
-        drawPlayerName(graphics, font, player.name(), screenX, screenY);
+        drawPlayerName(graphics, font, player.name(), markerPosition[0], markerPosition[1]);
+    }
+
+    private double[] playerMarkerPosition(
+        com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player, int centerX, int centerY
+    ) {
+        double screenX = centerX + (player.x() + panX) * scale;
+        double screenY = centerY + (player.z() + panY) * scale;
+        if (screenX >= 10 && screenX <= width - 10 && screenY >= 10 && screenY <= height - 24) {
+            return new double[] {screenX, screenY};
+        }
+
+        double dx = screenX - centerX;
+        double dy = screenY - centerY;
+        double halfWidth = Math.max(1, width / 2.0 - 16);
+        double halfHeight = Math.max(1, height / 2.0 - 28);
+        double scaleToEdge = Math.min(
+            dx == 0 ? Double.POSITIVE_INFINITY : halfWidth / Math.abs(dx),
+            dy == 0 ? Double.POSITIVE_INFINITY : halfHeight / Math.abs(dy)
+        );
+        return new double[] {centerX + dx * scaleToEdge, centerY + dy * scaleToEdge};
     }
 
     private void drawPlayerArrow(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -193,6 +204,31 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
+        if (event.button() == 0) {
+            int centerX = this.width / 2;
+            int centerY = this.height / 2;
+
+            if (Minecraft.getInstance().player != null) {
+                var localPlayer = Minecraft.getInstance().player;
+                double localX = centerX + (localPlayer.getX() + panX) * scale;
+                double localY = centerY + (localPlayer.getZ() + panY) * scale;
+                if (isNearMarker(event.x(), event.y(), localX, localY)) {
+                    centerMapOn(localPlayer.getX(), localPlayer.getZ());
+                    return true;
+                }
+            }
+
+            for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
+                if (Minecraft.getInstance().player != null
+                    && player.uuid().equals(Minecraft.getInstance().player.getUUID())) continue;
+                double[] marker = playerMarkerPosition(player, centerX, centerY);
+                if (isNearMarker(event.x(), event.y(), marker[0], marker[1])) {
+                    centerMapOn(player.x(), player.z());
+                    return true;
+                }
+            }
+        }
+
         if (event.button() == 1) { // Right click
             int centerX = this.width / 2;
             int centerY = this.height / 2;
@@ -235,6 +271,17 @@ public class WorldMapScreen extends Screen {
             return true;
         }
         return super.mouseClicked(event, isDouble);
+    }
+
+    private static boolean isNearMarker(double mouseX, double mouseY, double markerX, double markerY) {
+        double dx = mouseX - markerX;
+        double dy = mouseY - markerY;
+        return dx * dx + dy * dy <= 100;
+    }
+
+    private void centerMapOn(double worldX, double worldZ) {
+        panX = -worldX;
+        panY = -worldZ;
     }
 
     @Override
