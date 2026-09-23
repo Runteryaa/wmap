@@ -1,6 +1,7 @@
 package com.runterya.worldmap.backend;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -73,11 +74,12 @@ public class MapColorExtractor {
                     }
                 }
                 prevY = pos.getY();
+                boolean isWater = mapColor == MapColor.WATER;
+                boolean isLava = state.getFluidState().is(FluidTags.LAVA);
 
-                // Water color represents biome tint plus depth. Applying the
-                // terrain slope shade to it creates abrupt light/dark patches
-                // across otherwise continuous lakes and oceans.
-                MapColor.Brightness renderedBrightness = mapColor == MapColor.WATER
+                // Fluid surfaces use their own depth shading. Applying terrain
+                // slope shading as well creates abrupt patches across a pool.
+                MapColor.Brightness renderedBrightness = isWater || isLava
                     ? MapColor.Brightness.NORMAL
                     : brightness;
 
@@ -87,7 +89,7 @@ public class MapColorExtractor {
 
                 int tint = tintResolver.resolve(chunk, pos, state, mapColor);
                 if (tint == 0xFFFF00FF) tint = -1;
-                int textureColor = mapColor == MapColor.WATER ? -1 : textureResolver.resolve(state, pos);
+                int textureColor = isWater ? -1 : textureResolver.resolve(state, pos);
 
                 if (textureColor != -1) {
                     if (tint != -1) {
@@ -100,15 +102,13 @@ public class MapColorExtractor {
                     argb = applyBrightness(tint, renderedBrightness);
                 }
 
-                if (mapColor == MapColor.WATER) {
-                    // Count the actual contiguous water column below this pixel.
-                    // Heightmap differences can include off-by-one/terrain cases
-                    // and made separate chunks collapse to the same shade.
-                    int depth = getWaterDepth(chunk, pos);
-                    // Leave the first water block bright, then increase contrast
-                    // steadily as the column gets deeper.
-                    float darkeningDepth = Math.max(0, depth - SHALLOW_WATER_BLOCKS);
-                    float factor = 1.0f / (1.0f + darkeningDepth * WATER_DARKENING_PER_BLOCK);
+                if (isWater || isLava) {
+                    // Count the contiguous fluid column, so both source and
+                    // flowing lava receive consistent depth shading.
+                    int depth = getFluidDepth(chunk, pos, isLava);
+                    // Leave the surface block bright, then darken deeper columns.
+                    float darkeningDepth = Math.max(0, depth - SHALLOW_FLUID_BLOCKS);
+                    float factor = 1.0f / (1.0f + darkeningDepth * FLUID_DARKENING_PER_BLOCK);
                     argb = darkenColor(argb, factor);
                 }
 
@@ -120,16 +120,19 @@ public class MapColorExtractor {
 
     // The first block stays bright; 5/10/20/40/60-block columns retain about
     // 86/74/57/39/30 percent brightness. The curve has no early dark plateau.
-    private static final int SHALLOW_WATER_BLOCKS = 1;
-    private static final float WATER_DARKENING_PER_BLOCK = 0.04f;
+    private static final int SHALLOW_FLUID_BLOCKS = 1;
+    private static final float FLUID_DARKENING_PER_BLOCK = 0.04f;
 
-    private static int getWaterDepth(LevelChunk chunk, BlockPos surfacePos) {
+    private static int getFluidDepth(LevelChunk chunk, BlockPos surfacePos, boolean lava) {
         BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();
         int depth = 0;
         for (int y = surfacePos.getY(); y >= chunk.getMinY(); y--) {
             scanPos.set(surfacePos.getX(), y, surfacePos.getZ());
             BlockState state = chunk.getBlockState(scanPos);
-            if (state.getMapColor(chunk.getLevel(), scanPos) != MapColor.WATER) {
+            boolean matchingFluid = lava
+                ? state.getFluidState().is(FluidTags.LAVA)
+                : state.getMapColor(chunk.getLevel(), scanPos) == MapColor.WATER;
+            if (!matchingFluid) {
                 break;
             }
             depth++;
