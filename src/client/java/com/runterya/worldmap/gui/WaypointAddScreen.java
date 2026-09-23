@@ -35,6 +35,7 @@ public class WaypointAddScreen extends Screen {
         this.z = waypoint.getZ();
         this.dimension = waypoint.getDimension();
         this.editingWaypoint = waypoint;
+        this.isGlobal = waypoint.isGlobal();
     }
 
     private EditBox xField;
@@ -80,7 +81,7 @@ public class WaypointAddScreen extends Screen {
         });
         this.addRenderableWidget(this.colorField);
 
-        if (this.editingWaypoint == null && WaypointManager.isServerWaypointSharingAvailable()) {
+        if (WaypointManager.isServerWaypointSharingAvailable()) {
             this.addRenderableWidget(Button.builder(visibilityLabel(), button -> {
                 this.isGlobal = !this.isGlobal;
                 button.setMessage(visibilityLabel());
@@ -97,7 +98,7 @@ public class WaypointAddScreen extends Screen {
             try { finalZ = Integer.parseInt(this.zField.getValue()); } catch (Exception ignored) {}
 
             Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension,
-                this.editingWaypoint == null ? this.isGlobal : this.editingWaypoint.isGlobal());
+                this.isGlobal);
             if (this.editingWaypoint == null) WaypointManager.addWaypoint(wp);
             else WaypointManager.updateWaypoint(this.editingWaypoint, wp);
             if (this.minecraft != null && this.minecraft.player != null) {

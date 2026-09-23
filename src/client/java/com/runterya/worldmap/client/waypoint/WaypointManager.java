@@ -70,12 +70,33 @@ public class WaypointManager {
 
     public static void updateWaypoint(Waypoint original, Waypoint updated) {
         if (original.isGlobal()) {
+            if (updated.isGlobal()) {
+                if (serverWaypointSharingAvailable && !original.getGlobalId().isEmpty()) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
+                        AddGlobalWaypointPayload.Action.UPDATE, original.getGlobalId(), updated.getName(), updated.getX(), updated.getY(),
+                        updated.getZ(), updated.getColor(), updated.getDimension()
+                    ));
+                }
+                return;
+            }
             if (serverWaypointSharingAvailable && !original.getGlobalId().isEmpty()) {
                 net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
-                    AddGlobalWaypointPayload.Action.UPDATE, original.getGlobalId(), updated.getName(), updated.getX(), updated.getY(),
-                    updated.getZ(), updated.getColor(), updated.getDimension()
+                    AddGlobalWaypointPayload.Action.REMOVE, original.getGlobalId(), "", 0, 0, 0, 0, original.getDimension()
                 ));
             }
+            updated.setGlobal(false);
+            updated.setWorldId(original.getWorldId());
+            waypoints.add(updated);
+            save();
+            return;
+        }
+        if (updated.isGlobal() && serverWaypointSharingAvailable) {
+            waypoints.remove(original);
+            save();
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
+                AddGlobalWaypointPayload.Action.ADD, "", updated.getName(), updated.getX(), updated.getY(), updated.getZ(),
+                updated.getColor(), updated.getDimension()
+            ));
             return;
         }
         int index = waypoints.indexOf(original);
