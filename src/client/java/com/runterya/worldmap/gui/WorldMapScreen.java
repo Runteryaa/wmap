@@ -2,7 +2,6 @@ package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.client.ClientMapManager;
-import com.runterya.worldmap.network.WaypointIcon;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -20,6 +19,8 @@ import java.util.Map;
 import java.util.UUID;
 
 public class WorldMapScreen extends Screen {
+    private static final double MIN_SCALE = 0.025;
+    private static final double MAX_SCALE = 10.0;
     private static final net.minecraft.resources.Identifier PLAYER_MARKER =
         net.minecraft.resources.Identifier.fromNamespaceAndPath("minecraft", "textures/map/decorations/player.png");
 
@@ -109,16 +110,16 @@ public class WorldMapScreen extends Screen {
                     graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
                     graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
                 } else {
-                    graphics.fill(sx - 4, sy - 4, sx + 4, sy + 4, 0xFF000000);
-                    graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, wp.getColor() | 0xFF000000);
+                    graphics.fill(sx - 5, sy - 5, sx + 5, sy + 5, 0xFF000000);
+                    graphics.fill(sx - 4, sy - 4, sx + 4, sy + 4, wp.getColor() | 0xFF000000);
                     var iconId = net.minecraft.resources.Identifier.tryParse(wp.getIcon());
                     var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
                     if (item == Items.AIR) {
                         graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, 0xFFFFFFFF);
                     } else {
                         graphics.pose().pushMatrix();
-                        graphics.pose().translate(sx - 3, sy - 3);
-                        graphics.pose().scale(0.375f, 0.375f);
+                        graphics.pose().translate(sx - 4, sy - 4);
+                        graphics.pose().scale(0.5f, 0.5f);
                         graphics.item(new ItemStack(item), 0, 0);
                         graphics.pose().popMatrix();
                     }
@@ -311,16 +312,14 @@ public class WorldMapScreen extends Screen {
             int blockX = (int) Math.round(worldX);
             int blockZ = (int) Math.round(worldZ);
             
-            // Check if we clicked on an existing waypoint
-            // The waypoint is drawn as a 6x6 block square in world space
-            // Let's add a bit of leniency based on scale so it's easier to click
-            double clickTolerance = Math.max(4.0, 5.0 / this.scale);
-            
+            // Hit-test waypoints in screen space so the target stays usable at every zoom level.
             com.runterya.worldmap.client.waypoint.Waypoint clickedWaypoint = null;
             if (WorldMapConfig.showWaypoints()) {
                 for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
                     if (!wp.getDimension().equals(dim)) continue;
-                    if (Math.abs(wp.getX() - worldX) <= clickTolerance && Math.abs(wp.getZ() - worldZ) <= clickTolerance) {
+                    double waypointX = centerX + (wp.getX() + panX) * scale;
+                    double waypointY = centerY + (wp.getZ() + panY) * scale;
+                    if (Math.abs(waypointX - event.x()) <= 7 && Math.abs(waypointY - event.y()) <= 7) {
                         clickedWaypoint = wp;
                         break;
                     }
@@ -360,7 +359,7 @@ public class WorldMapScreen extends Screen {
         } else if (scrollY < 0) {
             scale /= 1.2; // Zoom out
         }
-        scale = Math.max(0.1, Math.min(scale, 10.0)); // Clamp scale
+        scale = Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
         return true;
     }
 
