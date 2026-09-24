@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.RenderPipelines;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -29,6 +30,15 @@ public class WorldMapScreen extends Screen {
             this.panX = -Minecraft.getInstance().player.getX();
             this.panY = -Minecraft.getInstance().player.getZ();
         }
+    }
+
+    @Override
+    protected void init() {
+        this.addRenderableWidget(Button.builder(Component.literal("Settings"), button ->
+            com.runterya.worldmap.client.ClientPlatform.setScreen(
+                this.minecraft, new WorldMapConfigScreen(this)
+            )
+        ).bounds(8, this.height - 28, 100, 20).build());
     }
 
     @Override
@@ -220,6 +230,9 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
+        // Let GUI controls (such as the Settings button) handle their clicks first.
+        if (super.mouseClicked(event, isDouble)) return true;
+
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
@@ -290,7 +303,7 @@ public class WorldMapScreen extends Screen {
             }
             return true;
         }
-        return super.mouseClicked(event, isDouble);
+        return false;
     }
 
     private static boolean isNearMarker(double mouseX, double mouseY, double markerX, double markerY) {
