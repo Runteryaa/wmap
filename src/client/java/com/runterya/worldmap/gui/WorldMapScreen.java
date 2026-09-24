@@ -13,9 +13,12 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.resources.Identifier;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import java.util.List;
@@ -32,9 +35,19 @@ public class WorldMapScreen extends Screen {
     private double scale = 1.0;
     private EditBox waypointSearchField;
     private int searchScrollOffset;
-    private static final int SEARCH_PANEL_WIDTH = 220;
+    private static final int SEARCH_PANEL_WIDTH = 280;
     private static final int SEARCH_ROW_HEIGHT = 22;
     private static final int MAX_SEARCH_RESULTS = 8;
+    private static final int ITEM_PICKER_COLUMNS = 9;
+    private static final int ITEM_PICKER_ROWS = 5;
+    private record SearchItemEntry(Identifier id, ItemStack stack, String searchName) {}
+    private Button itemSearchButton;
+    private boolean itemPickerOpen;
+    private String itemPickerSearch = "";
+    private int itemPickerScrollRow;
+    private String selectedSearchItem = "";
+    private List<SearchItemEntry> allSearchItems = List.of();
+    private List<SearchItemEntry> filteredSearchItems = List.of();
 
     public WorldMapScreen() {
         super(Component.literal("World Map"));
@@ -61,12 +74,17 @@ public class WorldMapScreen extends Screen {
 
         this.waypointSearchField = new EditBox(this.font,
             Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8), 8,
-            Math.min(SEARCH_PANEL_WIDTH, this.width - 16), 20,
+            Math.min(190, this.width - 110), 20,
             Component.literal("Search waypoints"));
-        this.waypointSearchField.setHint(Component.literal("Search waypoint or item"));
+        this.waypointSearchField.setHint(Component.literal("Search waypoint name"));
         this.waypointSearchField.setMaxLength(64);
         this.waypointSearchField.setResponder(text -> this.searchScrollOffset = 0);
         this.addRenderableWidget(this.waypointSearchField);
+        this.itemSearchButton = this.addRenderableWidget(Button.builder(Component.literal(
+            this.selectedSearchItem.isBlank() ? "Choose item" : "Item selected"), button ->
+            openWaypointItemPicker()
+        ).bounds(Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8) + 196, 8,
+            Math.min(76, Math.max(40, this.width - 224)), 20).build());
     }
 
     @Override
@@ -149,29 +167,55 @@ public class WorldMapScreen extends Screen {
         graphics.text(font, coordText, 5, 5, 0xFFFFFFFF, true);
 
         drawWaypointSearchResults(graphics, mouseX, mouseY, currentDim);
+        if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
     }
 
     private List<com.runterya.worldmap.client.waypoint.Waypoint> getWaypointSearchResults(String currentDim) {
-        if (this.waypointSearchField == null || this.waypointSearchField.getValue().isBlank()) return List.of();
+        if (this.waypointSearchField == null) return List.of();
         String query = this.waypointSearchField.getValue().trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty() && this.selectedSearchItem.isBlank()) return List.of();
         return com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints().stream()
             .filter(wp -> wp.getDimension().equals(currentDim))
-            .filter(wp -> waypointMatchesSearch(wp, query))
+            .filter(wp -> query.isEmpty() || wp.getName().toLowerCase(Locale.ROOT).contains(query))
+            .filter(wp -> this.selectedSearchItem.isBlank() || wp.getIcon().equals(this.selectedSearchItem))
             .toList();
     }
 
-    private static boolean waypointMatchesSearch(
-        com.runterya.worldmap.client.waypoint.Waypoint waypoint, String query
-    ) {
-        if (waypoint.getName().toLowerCase(Locale.ROOT).contains(query)) return true;
-        if (waypoint.getIcon().isBlank()) return false;
-        String iconId = waypoint.getIcon().toLowerCase(Locale.ROOT);
-        if (iconId.contains(query)) return true;
-        var iconIdentifier = net.minecraft.resources.Identifier.tryParse(waypoint.getIcon());
-        if (iconIdentifier == null) return false;
-        var item = BuiltInRegistries.ITEM.getValue(iconIdentifier);
-        return item != Items.AIR
-            && new ItemStack(item).getHoverName().getString().toLowerCase(Locale.ROOT).contains(query);
+    private void openWaypointItemPicker() {
+        List<SearchItemEntry> items = new ArrayList<>();
+        BuiltInRegistries.ITEM.stream().filter(item -> item != Items.AIR).forEach(item -> {
+            Identifier id = BuiltInRegistries.ITEM.getKey(item);
+            if (id != null) {
+                ItemStack stack = new ItemStack(item);
+                items.add(new SearchItemEntry(id, stack,
+                    (stack.getHoverName().getString() + " " + id).toLowerCase(Locale.ROOT)));
+            }
+        });
+        this.allSearchItems = List.copyOf(items);
+        this.filteredSearchItems = this.allSearchItems;
+        this.itemPickerSearch = "";
+        this.itemPickerScrollRow = 0;
+        this.itemPickerOpen = true;
+    }
+
+    private void filterWaypointItems() {
+        String query = this.itemPickerSearch.trim().toLowerCase(Locale.ROOT);
+        this.filteredSearchItems = this.allSearchItems.stream()
+            .filter(item -> query.isEmpty() || item.searchName().contains(query)).toList();
+        this.itemPickerScrollRow = 0;
+    }
+
+    private void selectWaypointSearchItem(int filteredIndex) {
+        if (filteredIndex < 0 || filteredIndex >= this.filteredSearchItems.size()) return;
+        String selected = this.filteredSearchItems.get(filteredIndex).id().toString();
+        this.selectedSearchItem = selected.equals(this.selectedSearchItem) ? "" : selected;
+        if (this.waypointSearchField != null) this.waypointSearchField.setValue("");
+        if (this.itemSearchButton != null) {
+            this.itemSearchButton.setMessage(Component.literal(
+                this.selectedSearchItem.isBlank() ? "Choose item" : "Item selected"));
+        }
+        this.searchScrollOffset = 0;
+        this.itemPickerOpen = false;
     }
 
     private void drawWaypointSearchResults(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -181,18 +225,28 @@ public class WorldMapScreen extends Screen {
 
         int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
         int panelY = 31;
-        int visibleRows = Math.min(MAX_SEARCH_RESULTS, Math.max(1, (this.height - panelY - 36) / SEARCH_ROW_HEIGHT));
+        int headerHeight = 18;
+        int visibleRows = Math.min(MAX_SEARCH_RESULTS,
+            Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
         int maxOffset = Math.max(0, results.size() - visibleRows);
         this.searchScrollOffset = Math.max(0, Math.min(maxOffset, this.searchScrollOffset));
         int shownRows = Math.min(visibleRows, results.size() - this.searchScrollOffset);
-        int panelHeight = shownRows * SEARCH_ROW_HEIGHT + 2;
+        int panelHeight = headerHeight + shownRows * SEARCH_ROW_HEIGHT + 2;
         graphics.fill(panelX, panelY, panelX + SEARCH_PANEL_WIDTH, panelY + panelHeight, 0xF0202020);
         graphics.outline(panelX, panelY, SEARCH_PANEL_WIDTH, panelHeight, 0xFF777777);
+        String header = this.selectedSearchItem.isBlank()
+            ? results.size() + " matching waypoints"
+            : selectedSearchItemName() + " — " + results.size() + " matches";
+        int headerMaxWidth = SEARCH_PANEL_WIDTH - 12;
+        while (!header.isEmpty() && this.font.width(header) > headerMaxWidth) {
+            header = header.substring(0, header.length() - 1);
+        }
+        graphics.text(this.font, header, panelX + 6, panelY + 5, 0xFFCCCCCC, true);
 
         for (int row = 0; row < shownRows; row++) {
             int index = this.searchScrollOffset + row;
             var waypoint = results.get(index);
-            int rowY = panelY + 1 + row * SEARCH_ROW_HEIGHT;
+            int rowY = panelY + headerHeight + row * SEARCH_ROW_HEIGHT;
             boolean hovered = mouseX >= panelX && mouseX < panelX + SEARCH_PANEL_WIDTH
                 && mouseY >= rowY && mouseY < rowY + SEARCH_ROW_HEIGHT;
             if (hovered) graphics.fill(panelX + 1, rowY, panelX + SEARCH_PANEL_WIDTH - 1,
@@ -220,6 +274,100 @@ public class WorldMapScreen extends Screen {
             }
             graphics.text(this.font, label, panelX + 24, rowY + 6, 0xFFFFFFFF, true);
         }
+    }
+
+    private String selectedSearchItemName() {
+        Identifier id = Identifier.tryParse(this.selectedSearchItem);
+        if (id == null) return "Selected item";
+        Item item = BuiltInRegistries.ITEM.getValue(id);
+        return item == Items.AIR ? this.selectedSearchItem : new ItemStack(item).getHoverName().getString();
+    }
+
+    private void drawWaypointItemPicker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                        int mouseX, int mouseY) {
+        int panelX = Math.max(8, (this.width - 290) / 2);
+        int panelY = Math.max(8, (this.height - 238) / 2);
+        graphics.fill(0, 0, this.width, this.height, 0xB0000000);
+        graphics.fill(panelX, panelY, panelX + 290, panelY + 238, 0xFF202020);
+        graphics.outline(panelX, panelY, 290, 238, 0xFFAAAAAA);
+        graphics.centeredText(this.font, "Choose item to find waypoints", panelX + 145, panelY + 8, 0xFFFFFFFF);
+        graphics.fill(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF101010);
+        graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
+        String visibleSearch = this.itemPickerSearch.length() > 34
+            ? this.itemPickerSearch.substring(this.itemPickerSearch.length() - 34) : this.itemPickerSearch;
+        graphics.text(this.font, visibleSearch.isEmpty() ? "Search items by name" : visibleSearch + "|",
+            panelX + 14, panelY + 31, visibleSearch.isEmpty() ? 0xFF888888 : 0xFFFFFFFF);
+        graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
+        graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
+
+        int firstIndex = this.itemPickerScrollRow * ITEM_PICKER_COLUMNS;
+        int visibleCount = ITEM_PICKER_COLUMNS * ITEM_PICKER_ROWS;
+        int count = Math.min(visibleCount, this.filteredSearchItems.size() - firstIndex);
+        for (int i = 0; i < count; i++) {
+            SearchItemEntry entry = this.filteredSearchItems.get(firstIndex + i);
+            int column = i % ITEM_PICKER_COLUMNS;
+            int row = i / ITEM_PICKER_COLUMNS;
+            int x = panelX + 18 + column * 28;
+            int y = panelY + 54 + row * 28;
+            boolean hovered = mouseX >= x && mouseX < x + 24 && mouseY >= y && mouseY < y + 24;
+            boolean selected = entry.id().toString().equals(this.selectedSearchItem);
+            graphics.fill(x, y, x + 24, y + 24, selected ? 0xFF75662E : hovered ? 0xFF555555 : 0xFF333333);
+            graphics.item(entry.stack(), x + 4, y + 4);
+            if (hovered) graphics.setTooltipForNextFrame(this.font, entry.stack(), mouseX, mouseY);
+        }
+        graphics.text(this.font, this.filteredSearchItems.size() + " items — scroll to browse",
+            panelX + 12, panelY + 224, 0xFFCCCCCC);
+    }
+
+    private boolean handleWaypointItemPickerClick(MouseButtonEvent event) {
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return true;
+        int panelX = Math.max(8, (this.width - 290) / 2);
+        int panelY = Math.max(8, (this.height - 238) / 2);
+        if (event.x() >= panelX + 258 && event.x() <= panelX + 282
+            && event.y() >= panelY + 7 && event.y() <= panelY + 27) {
+            this.itemPickerOpen = false;
+            return true;
+        }
+        int gridX = panelX + 18;
+        int gridY = panelY + 54;
+        if (event.x() >= gridX && event.x() < gridX + ITEM_PICKER_COLUMNS * 28
+            && event.y() >= gridY && event.y() < gridY + ITEM_PICKER_ROWS * 28) {
+            int column = (int) (event.x() - gridX) / 28;
+            int row = (int) (event.y() - gridY) / 28;
+            selectWaypointSearchItem((this.itemPickerScrollRow + row) * ITEM_PICKER_COLUMNS + column);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+        if (!this.itemPickerOpen) return super.keyPressed(event);
+        if (event.key() == InputConstants.KEY_ESCAPE) {
+            this.itemPickerOpen = false;
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_BACKSPACE && !this.itemPickerSearch.isEmpty()) {
+            int end = this.itemPickerSearch.offsetByCodePoints(this.itemPickerSearch.length(), -1);
+            this.itemPickerSearch = this.itemPickerSearch.substring(0, end);
+            filterWaypointItems();
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_RETURN) {
+            selectWaypointSearchItem(0);
+            return true;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
+        if (!this.itemPickerOpen) return super.charTyped(event);
+        if (event.isAllowedChatCharacter()
+            && this.itemPickerSearch.codePointCount(0, this.itemPickerSearch.length()) < 48) {
+            this.itemPickerSearch += event.codepointAsString();
+            filterWaypointItems();
+        }
+        return true;
     }
 
     private void drawPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -365,6 +513,8 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
+        if (this.itemPickerOpen) return handleWaypointItemPickerClick(event);
+
         // Let GUI controls (such as the Settings button) handle their clicks first.
         if (super.mouseClicked(event, isDouble)) return true;
 
@@ -379,11 +529,14 @@ public class WorldMapScreen extends Screen {
                 List<com.runterya.worldmap.client.waypoint.Waypoint> results = getWaypointSearchResults(currentDim);
                 int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
                 int panelY = 31;
-                int visibleRows = Math.min(MAX_SEARCH_RESULTS, Math.max(1, (this.height - panelY - 36) / SEARCH_ROW_HEIGHT));
+                int headerHeight = 18;
+                int visibleRows = Math.min(MAX_SEARCH_RESULTS,
+                    Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
                 int shownRows = Math.min(visibleRows, Math.max(0, results.size() - this.searchScrollOffset));
                 if (event.x() >= panelX && event.x() < panelX + SEARCH_PANEL_WIDTH
-                    && event.y() >= panelY && event.y() < panelY + shownRows * SEARCH_ROW_HEIGHT + 2) {
-                    int row = (int) (event.y() - panelY - 1) / SEARCH_ROW_HEIGHT;
+                    && event.y() >= panelY + headerHeight
+                    && event.y() < panelY + headerHeight + shownRows * SEARCH_ROW_HEIGHT) {
+                    int row = (int) (event.y() - panelY - headerHeight) / SEARCH_ROW_HEIGHT;
                     int selectedIndex = this.searchScrollOffset + row;
                     if (selectedIndex >= 0 && selectedIndex < results.size()) {
                         var waypoint = results.get(selectedIndex);
@@ -501,6 +654,14 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.itemPickerOpen) {
+            int rows = (this.filteredSearchItems.size() + ITEM_PICKER_COLUMNS - 1) / ITEM_PICKER_COLUMNS;
+            int maxScroll = Math.max(0, rows - ITEM_PICKER_ROWS);
+            this.itemPickerScrollRow = Math.max(0, Math.min(maxScroll,
+                this.itemPickerScrollRow - (int) Math.signum(scrollY)));
+            return true;
+        }
+
         String currentDim = Minecraft.getInstance().level != null
             ? Minecraft.getInstance().level.dimension().identifier().toString()
             : "minecraft:overworld";
@@ -509,8 +670,10 @@ public class WorldMapScreen extends Screen {
         int searchVisibleRows = Math.min(MAX_SEARCH_RESULTS,
             Math.max(1, (this.height - 31 - 36) / SEARCH_ROW_HEIGHT));
         int searchShownRows = Math.min(searchVisibleRows, searchResults.size());
+        int searchHeaderHeight = 18;
         if (searchShownRows > 0 && mouseX >= searchPanelX && mouseX < searchPanelX + SEARCH_PANEL_WIDTH
-            && mouseY >= 31 && mouseY < 33 + searchShownRows * SEARCH_ROW_HEIGHT) {
+            && mouseY >= 31 + searchHeaderHeight
+            && mouseY < 33 + searchHeaderHeight + searchShownRows * SEARCH_ROW_HEIGHT) {
             int maxOffset = Math.max(0, searchResults.size() - searchVisibleRows);
             this.searchScrollOffset = Math.max(0, Math.min(maxOffset,
                 this.searchScrollOffset - (int) Math.signum(scrollY)));
