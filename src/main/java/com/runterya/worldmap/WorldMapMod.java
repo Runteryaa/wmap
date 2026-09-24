@@ -23,6 +23,7 @@ public class WorldMapMod implements ModInitializer {
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.clientboundPlay().register(PlayerPosPayload.ID, PlayerPosPayload.CODEC);
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.serverboundPlay().register(com.runterya.worldmap.network.AddGlobalWaypointPayload.ID, com.runterya.worldmap.network.AddGlobalWaypointPayload.CODEC);
         net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.clientboundPlay().register(com.runterya.worldmap.network.SyncGlobalWaypointsPayload.ID, com.runterya.worldmap.network.SyncGlobalWaypointsPayload.CODEC);
+        net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.clientboundPlay().register(com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.ID, com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.CODEC);
 
         com.runterya.worldmap.backend.WorldMapServer.init();
         LOGGER.info("World Map loaded!");

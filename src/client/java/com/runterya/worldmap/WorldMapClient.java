@@ -178,11 +178,18 @@ public class WorldMapClient implements ClientModInitializer {
                     Waypoint waypoint = new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(),
                         true, "", wp.icon());
                     waypoint.setGlobalId(wp.id());
+                    waypoint.setCreatorUuid(wp.creatorUuid());
+                    waypoint.setCreatorName(wp.creatorName());
                     syncedWaypoints.add(waypoint);
                 }
                 WaypointManager.replaceGlobalWaypoints(syncedWaypoints);
             });
         });
+
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+            com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.ID, (payload, ctx) ->
+                ctx.client().execute(() -> WaypointManager.applyGlobalWaypointOwners(payload.owners()))
+        );
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(MapUpdatePayload.ID, (payload, ctx) -> {
             ctx.client().execute(() -> {

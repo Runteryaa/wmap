@@ -13,6 +13,8 @@ public class Waypoint {
     private String worldId;
     private String globalId;
     private String icon = "";
+    private String creatorUuid = "";
+    private String creatorName = "";
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal) {
         this(name, x, y, z, color, dimension, isGlobal, "");
@@ -47,6 +49,10 @@ public class Waypoint {
     public void setWorldId(String worldId) { this.worldId = worldId; }
     public String getGlobalId() { return globalId == null ? "" : globalId; }
     public void setGlobalId(String globalId) { this.globalId = globalId; }
+    public String getCreatorUuid() { return creatorUuid == null ? "" : creatorUuid; }
+    public void setCreatorUuid(String creatorUuid) { this.creatorUuid = creatorUuid == null ? "" : creatorUuid; }
+    public String getCreatorName() { return creatorName == null ? "" : creatorName; }
+    public void setCreatorName(String creatorName) { this.creatorName = creatorName == null ? "" : creatorName; }
     public String getIcon() {
         this.icon = WaypointIcon.normalize(this.icon);
         return this.icon;

@@ -126,6 +126,19 @@ public class WaypointManager {
         globalWaypoints.clear();
     }
 
+    public static void applyGlobalWaypointOwners(
+        List<com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.WaypointOwner> owners
+    ) {
+        for (var owner : owners) {
+            for (Waypoint waypoint : globalWaypoints) {
+                if (!waypoint.getGlobalId().equals(owner.waypointId())) continue;
+                waypoint.setCreatorUuid(owner.creatorUuid());
+                waypoint.setCreatorName(owner.creatorName());
+                break;
+            }
+        }
+    }
+
     public static List<Waypoint> getWaypoints() {
         String currentWorldId = ClientMapStorage.getWaypointWorldId();
         List<Waypoint> all = new ArrayList<>(waypoints);

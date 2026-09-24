@@ -19,6 +19,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.List;
@@ -41,6 +42,10 @@ public class WorldMapScreen extends Screen {
     private static final int ITEM_PICKER_COLUMNS = 9;
     private static final int ITEM_PICKER_ROWS = 5;
     private record SearchItemEntry(Identifier id, ItemStack stack, String searchName) {}
+    private record WaypointSearchResult(
+        com.runterya.worldmap.client.waypoint.Waypoint waypoint,
+        com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player
+    ) {}
     private Button itemSearchButton;
     private boolean itemPickerOpen;
     private String itemPickerSearch = "";
@@ -170,15 +175,59 @@ public class WorldMapScreen extends Screen {
         if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
     }
 
-    private List<com.runterya.worldmap.client.waypoint.Waypoint> getWaypointSearchResults(String currentDim) {
+    private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {
+        Map<UUID, com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> players = new LinkedHashMap<>();
+        for (var player : ClientMapManager.getOtherPlayers()) {
+            if (player.dimension().equals(currentDim)) players.put(player.uuid(), player);
+        }
+        var localPlayer = Minecraft.getInstance().player;
+        if (localPlayer != null && Minecraft.getInstance().level != null
+            && Minecraft.getInstance().level.dimension().identifier().toString().equals(currentDim)) {
+            players.put(localPlayer.getUUID(), new com.runterya.worldmap.network.PlayerPosPayload.PlayerPos(
+                localPlayer.getUUID(), localPlayer.getX(), localPlayer.getZ(), localPlayer.getYRot(),
+                localPlayer.getName().getString(), currentDim));
+        }
+        return List.copyOf(players.values());
+    }
+
+    private List<WaypointSearchResult> getWaypointSearchResults(String currentDim) {
         if (this.waypointSearchField == null) return List.of();
         String query = this.waypointSearchField.getValue().trim().toLowerCase(Locale.ROOT);
         if (query.isEmpty() && this.selectedSearchItem.isBlank()) return List.of();
-        return com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints().stream()
+
+        List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> playerMatches = query.isEmpty()
+            ? List.of()
+            : getPlayersInDimension(currentDim).stream()
+                .filter(player -> player.name().toLowerCase(Locale.ROOT).contains(query))
+                .toList();
+        var localPlayer = Minecraft.getInstance().player;
+        boolean searchingForLocalPlayer = !query.isEmpty() && localPlayer != null
+            && localPlayer.getName().getString().toLowerCase(Locale.ROOT).contains(query);
+
+        List<WaypointSearchResult> results = new ArrayList<>();
+        com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints().stream()
             .filter(wp -> wp.getDimension().equals(currentDim))
-            .filter(wp -> query.isEmpty() || wp.getName().toLowerCase(Locale.ROOT).contains(query))
             .filter(wp -> this.selectedSearchItem.isBlank() || wp.getIcon().equals(this.selectedSearchItem))
-            .toList();
+            .filter(wp -> query.isEmpty() || wp.getName().toLowerCase(Locale.ROOT).contains(query)
+                || waypointOwnerMatches(wp, query, playerMatches, searchingForLocalPlayer))
+            .forEach(wp -> results.add(new WaypointSearchResult(wp, null)));
+
+        if (this.selectedSearchItem.isBlank()) {
+            for (var player : playerMatches) results.add(new WaypointSearchResult(null, player));
+        }
+        return List.copyOf(results);
+    }
+
+    private static boolean waypointOwnerMatches(
+        com.runterya.worldmap.client.waypoint.Waypoint waypoint, String query,
+        List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> matchingPlayers,
+        boolean searchingForLocalPlayer
+    ) {
+        if (waypoint.getCreatorName().toLowerCase(Locale.ROOT).contains(query)) return true;
+        String creatorUuid = waypoint.getCreatorUuid();
+        if (!creatorUuid.isEmpty() && matchingPlayers.stream()
+            .anyMatch(player -> player.uuid().toString().equals(creatorUuid))) return true;
+        return searchingForLocalPlayer && !waypoint.isGlobal();
     }
 
     private void openWaypointItemPicker() {
@@ -220,7 +269,7 @@ public class WorldMapScreen extends Screen {
 
     private void drawWaypointSearchResults(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
                                            int mouseX, int mouseY, String currentDim) {
-        List<com.runterya.worldmap.client.waypoint.Waypoint> results = getWaypointSearchResults(currentDim);
+        List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
         if (results.isEmpty()) return;
 
         int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
@@ -235,8 +284,8 @@ public class WorldMapScreen extends Screen {
         graphics.fill(panelX, panelY, panelX + SEARCH_PANEL_WIDTH, panelY + panelHeight, 0xF0202020);
         graphics.outline(panelX, panelY, SEARCH_PANEL_WIDTH, panelHeight, 0xFF777777);
         String header = this.selectedSearchItem.isBlank()
-            ? results.size() + " matching waypoints"
-            : selectedSearchItemName() + " — " + results.size() + " matches";
+            ? results.size() + " matching waypoints and players"
+            : selectedSearchItemName() + " — " + results.size() + " waypoints";
         int headerMaxWidth = SEARCH_PANEL_WIDTH - 12;
         while (!header.isEmpty() && this.font.width(header) > headerMaxWidth) {
             header = header.substring(0, header.length() - 1);
@@ -245,29 +294,41 @@ public class WorldMapScreen extends Screen {
 
         for (int row = 0; row < shownRows; row++) {
             int index = this.searchScrollOffset + row;
-            var waypoint = results.get(index);
+            WaypointSearchResult result = results.get(index);
             int rowY = panelY + headerHeight + row * SEARCH_ROW_HEIGHT;
             boolean hovered = mouseX >= panelX && mouseX < panelX + SEARCH_PANEL_WIDTH
                 && mouseY >= rowY && mouseY < rowY + SEARCH_ROW_HEIGHT;
             if (hovered) graphics.fill(panelX + 1, rowY, panelX + SEARCH_PANEL_WIDTH - 1,
                 rowY + SEARCH_ROW_HEIGHT, 0xFF45454F);
 
-            if (waypoint.getIcon().isBlank()) {
-                graphics.fill(panelX + 5, rowY + 5, panelX + 19, rowY + 19, 0xFF000000);
-                graphics.fill(panelX + 6, rowY + 6, panelX + 18, rowY + 18,
-                    waypoint.getColor() | 0xFF000000);
+            String label;
+            if (result.player() != null) {
+                var player = result.player();
+                int playerColor = Minecraft.getInstance().player != null
+                    && player.uuid().equals(Minecraft.getInstance().player.getUUID())
+                    ? 0xFFFFFFFF : colorForPlayer(player.uuid());
+                graphics.blit(RenderPipelines.GUI_TEXTURED, PLAYER_MARKER,
+                    panelX + 4, rowY + 4, 0.0f, 0.0f, 14, 14, 8, 8, 8, 8, playerColor);
+                label = player.name() + "  " + (int) Math.round(player.x()) + ", " + (int) Math.round(player.z());
             } else {
-                var iconId = net.minecraft.resources.Identifier.tryParse(waypoint.getIcon());
-                var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
-                if (item == Items.AIR) {
-                    graphics.fill(panelX + 5, rowY + 5, panelX + 19, rowY + 19,
+                var waypoint = result.waypoint();
+                if (waypoint.getIcon().isBlank()) {
+                    graphics.fill(panelX + 5, rowY + 5, panelX + 19, rowY + 19, 0xFF000000);
+                    graphics.fill(panelX + 6, rowY + 6, panelX + 18, rowY + 18,
                         waypoint.getColor() | 0xFF000000);
                 } else {
-                    graphics.item(new ItemStack(item), panelX + 4, rowY + 3);
+                    var iconId = net.minecraft.resources.Identifier.tryParse(waypoint.getIcon());
+                    var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
+                    if (item == Items.AIR) {
+                        graphics.fill(panelX + 5, rowY + 5, panelX + 19, rowY + 19,
+                            waypoint.getColor() | 0xFF000000);
+                    } else {
+                        graphics.item(new ItemStack(item), panelX + 4, rowY + 3);
+                    }
                 }
+                label = waypoint.getName() + "  " + waypoint.getX() + ", " + waypoint.getZ();
             }
 
-            String label = waypoint.getName() + "  " + waypoint.getX() + ", " + waypoint.getZ();
             int maxTextWidth = SEARCH_PANEL_WIDTH - 30;
             while (!label.isEmpty() && this.font.width(label) > maxTextWidth) {
                 label = label.substring(0, label.length() - 1);
@@ -525,8 +586,9 @@ public class WorldMapScreen extends Screen {
                 ? Minecraft.getInstance().level.dimension().identifier().toString()
                 : "minecraft:overworld";
 
-            if (this.waypointSearchField != null && !this.waypointSearchField.getValue().isBlank()) {
-                List<com.runterya.worldmap.client.waypoint.Waypoint> results = getWaypointSearchResults(currentDim);
+            if (this.waypointSearchField != null
+                && (!this.waypointSearchField.getValue().isBlank() || !this.selectedSearchItem.isBlank())) {
+                List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
                 int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
                 int panelY = 31;
                 int headerHeight = 18;
@@ -539,8 +601,9 @@ public class WorldMapScreen extends Screen {
                     int row = (int) (event.y() - panelY - headerHeight) / SEARCH_ROW_HEIGHT;
                     int selectedIndex = this.searchScrollOffset + row;
                     if (selectedIndex >= 0 && selectedIndex < results.size()) {
-                        var waypoint = results.get(selectedIndex);
-                        centerMapOn(waypoint.getX(), waypoint.getZ());
+                        WaypointSearchResult selected = results.get(selectedIndex);
+                        if (selected.player() != null) centerMapOn(selected.player().x(), selected.player().z());
+                        else centerMapOn(selected.waypoint().getX(), selected.waypoint().getZ());
                     }
                     return true;
                 }
@@ -665,7 +728,7 @@ public class WorldMapScreen extends Screen {
         String currentDim = Minecraft.getInstance().level != null
             ? Minecraft.getInstance().level.dimension().identifier().toString()
             : "minecraft:overworld";
-        List<com.runterya.worldmap.client.waypoint.Waypoint> searchResults = getWaypointSearchResults(currentDim);
+        List<WaypointSearchResult> searchResults = getWaypointSearchResults(currentDim);
         int searchPanelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
         int searchVisibleRows = Math.min(MAX_SEARCH_RESULTS,
             Math.max(1, (this.height - 31 - 36) / SEARCH_ROW_HEIGHT));

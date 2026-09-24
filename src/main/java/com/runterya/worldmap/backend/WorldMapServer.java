@@ -96,26 +96,29 @@ public class WorldMapServer {
                 lastPlayerDimension.put(player.getUUID(), player.level().dimension().identifier().toString());
                 
                 // Sync global waypoints
-                ServerPlayNetworking.send(player, new SyncGlobalWaypointsPayload(globalWaypoints));
+                sendGlobalWaypoints(player, new SyncGlobalWaypointsPayload(globalWaypoints));
             });
         });
 
         ServerPlayNetworking.registerGlobalReceiver(AddGlobalWaypointPayload.ID, (payload, context) -> {
+            ServerPlayer sender = context.player();
             context.server().execute(() -> {
                 boolean changed = switch (payload.action()) {
                     case ADD -> {
                         globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
                             UUID.randomUUID().toString(), payload.name(), payload.x(), payload.y(), payload.z(),
-                            payload.color(), payload.dimension(), payload.icon()
+                            payload.color(), payload.dimension(), payload.icon(), sender.getUUID().toString(),
+                            sender.getName().getString()
                         ));
                         yield true;
                     }
                     case UPDATE -> {
                         int index = findGlobalWaypoint(payload.id());
                         if (index < 0) yield false;
+                        SyncGlobalWaypointsPayload.GlobalWaypoint old = globalWaypoints.get(index);
                         globalWaypoints.set(index, new SyncGlobalWaypointsPayload.GlobalWaypoint(
                             payload.id(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(),
-                            payload.dimension(), payload.icon()
+                            payload.dimension(), payload.icon(), old.creatorUuid(), old.creatorName()
                         ));
                         yield true;
                     }
@@ -126,7 +129,7 @@ public class WorldMapServer {
                 SyncGlobalWaypointsPayload syncPayload = new SyncGlobalWaypointsPayload(new ArrayList<>(globalWaypoints));
                 for (ServerPlayer player : context.server().getPlayerList().getPlayers()) {
                     if (MODDED_PLAYERS.contains(player.getUUID())) {
-                        ServerPlayNetworking.send(player, syncPayload);
+                        sendGlobalWaypoints(player, syncPayload);
                     }
                 }
             });
@@ -159,6 +162,19 @@ public class WorldMapServer {
             if (id.equals(globalWaypoints.get(i).id())) return i;
         }
         return -1;
+    }
+
+    private static void sendGlobalWaypoints(ServerPlayer player, SyncGlobalWaypointsPayload payload) {
+        ServerPlayNetworking.send(player, payload);
+        if (ServerPlayNetworking.canSend(player, com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.ID)) {
+            List<com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.WaypointOwner> owners =
+                payload.waypoints().stream()
+                    .map(wp -> new com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload.WaypointOwner(
+                        wp.id(), wp.creatorUuid(), wp.creatorName()))
+                    .toList();
+            ServerPlayNetworking.send(player,
+                new com.runterya.worldmap.network.SyncGlobalWaypointOwnersPayload(owners));
+        }
     }
 
     /**
@@ -210,7 +226,7 @@ public class WorldMapServer {
                         if (wp.id() == null || wp.id().isEmpty()) {
                             globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
                                 UUID.randomUUID().toString(), wp.name(), wp.x(), wp.y(), wp.z(), wp.color(),
-                                wp.dimension(), wp.icon()
+                                wp.dimension(), wp.icon(), wp.creatorUuid(), wp.creatorName()
                             ));
                             migrated = true;
                         } else {
