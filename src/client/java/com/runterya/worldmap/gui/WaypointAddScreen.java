@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import com.runterya.worldmap.client.waypoint.Waypoint;
 import com.runterya.worldmap.client.waypoint.WaypointManager;
+import com.runterya.worldmap.network.WaypointIcon;
 import net.minecraft.client.Minecraft;
 
 import java.util.Random;
@@ -45,6 +46,7 @@ public class WaypointAddScreen extends Screen {
     private int currentColor;
     private boolean showColorWheel = false;
     private boolean isGlobal = false;
+    private WaypointIcon currentIcon = WaypointIcon.NONE;
     private static final net.minecraft.resources.Identifier COLOR_WHEEL = net.minecraft.resources.Identifier.fromNamespaceAndPath("worldmap", "textures/gui/color_wheel.png");
 
     @Override
@@ -71,6 +73,7 @@ public class WaypointAddScreen extends Screen {
         this.addRenderableWidget(this.zField);
 
         this.currentColor = this.editingWaypoint == null ? new java.util.Random().nextInt(0xFFFFFF) : this.editingWaypoint.getColor() & 0xFFFFFF;
+        this.currentIcon = this.editingWaypoint == null ? WaypointIcon.NONE : this.editingWaypoint.getIcon();
         this.colorField = new EditBox(this.font, centerX - 100, centerY - 20, 60, 20, Component.literal("Color Hex"));
         this.colorField.setValue(String.format("%06X", this.currentColor));
         this.colorField.setMaxLength(6);
@@ -88,6 +91,12 @@ public class WaypointAddScreen extends Screen {
             }).bounds(centerX + 2, centerY - 20, 98, 20).build());
         }
 
+        this.addRenderableWidget(Button.builder(iconLabel(), button -> {
+            WaypointIcon[] icons = WaypointIcon.values();
+            this.currentIcon = icons[(this.currentIcon.ordinal() + 1) % icons.length];
+            button.setMessage(iconLabel());
+        }).bounds(centerX - 100, centerY + 4, 200, 20).build());
+
         this.addRenderableWidget(Button.builder(Component.literal(this.editingWaypoint == null ? "Add" : "Save"), button -> {
             int color = 0xFF000000 | this.currentColor;
             int finalX = this.x;
@@ -98,22 +107,26 @@ public class WaypointAddScreen extends Screen {
             try { finalZ = Integer.parseInt(this.zField.getValue()); } catch (Exception ignored) {}
 
             Waypoint wp = new Waypoint(this.nameField.getValue(), finalX, finalY, finalZ, color, this.dimension,
-                this.isGlobal);
+                this.isGlobal, this.currentIcon);
             if (this.editingWaypoint == null) WaypointManager.addWaypoint(wp);
             else WaypointManager.updateWaypoint(this.editingWaypoint, wp);
             if (this.minecraft != null && this.minecraft.player != null) {
                 this.minecraft.player.sendSystemMessage(Component.literal(this.editingWaypoint == null ? "Waypoint added!" : "Waypoint updated!"));
             }
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
-        }).bounds(centerX - 100, centerY + 20, 98, 20).build());
+        }).bounds(centerX - 100, centerY + 32, 98, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Cancel"), button -> {
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
-        }).bounds(centerX + 2, centerY + 20, 98, 20).build());
+        }).bounds(centerX + 2, centerY + 32, 98, 20).build());
     }
 
     private Component visibilityLabel() {
         return Component.literal(this.isGlobal ? "[✓] Public" : "[ ] Public");
+    }
+
+    private Component iconLabel() {
+        return Component.literal("Waypoint icon: " + this.currentIcon.label());
     }
 
     @Override

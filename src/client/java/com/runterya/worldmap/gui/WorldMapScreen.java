@@ -2,6 +2,7 @@ package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.client.ClientMapManager;
+import com.runterya.worldmap.network.WaypointIcon;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -100,12 +101,22 @@ public class WorldMapScreen extends Screen {
                 int sx = (int) Math.round(screenX);
                 int sy = (int) Math.round(screenY);
 
-                // Xaero style waypoint marker (outlined box)
-                graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
-                graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
+                if (wp.getIcon() == WaypointIcon.NONE) {
+                    // Keep the compact colored square as the default marker.
+                    graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
+                    graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
+                } else {
+                    graphics.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0xFF000000);
+                    graphics.fill(sx - 6, sy - 6, sx + 6, sy + 6, wp.getColor() | 0xFF000000);
+                    var iconTexture = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+                        "minecraft", "textures/" + wp.getIcon().texturePath()
+                    );
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, iconTexture,
+                        sx - 5, sy - 5, 0.0f, 0.0f, 10, 10, 16, 16, 16, 16, 0xFFFFFFFF);
+                }
 
                 // Draw name centered above if hovered
-                if (mouseX >= sx - 4 && mouseX <= sx + 4 && mouseY >= sy - 4 && mouseY <= sy + 4) {
+                if (mouseX >= sx - 7 && mouseX <= sx + 7 && mouseY >= sy - 7 && mouseY <= sy + 7) {
                     String name = wp.getName();
                     graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
                 }

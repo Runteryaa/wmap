@@ -44,7 +44,8 @@ public class WaypointManager {
     public static void addWaypoint(Waypoint wp) {
         if (wp.isGlobal() && serverWaypointSharingAvailable) {
             net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
-                AddGlobalWaypointPayload.Action.ADD, "", wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(), wp.getDimension()
+                AddGlobalWaypointPayload.Action.ADD, "", wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(),
+                wp.getDimension(), wp.getIcon()
             ));
             return;
         }
@@ -74,7 +75,7 @@ public class WaypointManager {
                 if (serverWaypointSharingAvailable && !original.getGlobalId().isEmpty()) {
                     net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                         AddGlobalWaypointPayload.Action.UPDATE, original.getGlobalId(), updated.getName(), updated.getX(), updated.getY(),
-                        updated.getZ(), updated.getColor(), updated.getDimension()
+                        updated.getZ(), updated.getColor(), updated.getDimension(), updated.getIcon()
                     ));
                 }
                 return;
@@ -95,7 +96,7 @@ public class WaypointManager {
             save();
             net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                 AddGlobalWaypointPayload.Action.ADD, "", updated.getName(), updated.getX(), updated.getY(), updated.getZ(),
-                updated.getColor(), updated.getDimension()
+                updated.getColor(), updated.getDimension(), updated.getIcon()
             ));
             return;
         }
@@ -151,7 +152,7 @@ public class WaypointManager {
             );
             if (duplicate) continue;
             Waypoint local = new Waypoint(imported.getName(), imported.getX(), imported.getY(), imported.getZ(),
-                imported.getColor(), imported.getDimension(), false, currentWorldId);
+                imported.getColor(), imported.getDimension(), false, currentWorldId, imported.getIcon());
             waypoints.add(local);
             added++;
         }

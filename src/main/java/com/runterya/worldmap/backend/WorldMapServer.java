@@ -105,7 +105,8 @@ public class WorldMapServer {
                 boolean changed = switch (payload.action()) {
                     case ADD -> {
                         globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
-                            UUID.randomUUID().toString(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
+                            UUID.randomUUID().toString(), payload.name(), payload.x(), payload.y(), payload.z(),
+                            payload.color(), payload.dimension(), payload.icon()
                         ));
                         yield true;
                     }
@@ -113,7 +114,8 @@ public class WorldMapServer {
                         int index = findGlobalWaypoint(payload.id());
                         if (index < 0) yield false;
                         globalWaypoints.set(index, new SyncGlobalWaypointsPayload.GlobalWaypoint(
-                            payload.id(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(), payload.dimension()
+                            payload.id(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(),
+                            payload.dimension(), payload.icon()
                         ));
                         yield true;
                     }
@@ -207,7 +209,8 @@ public class WorldMapServer {
                     for (SyncGlobalWaypointsPayload.GlobalWaypoint wp : loaded) {
                         if (wp.id() == null || wp.id().isEmpty()) {
                             globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
-                                UUID.randomUUID().toString(), wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension()
+                                UUID.randomUUID().toString(), wp.name(), wp.x(), wp.y(), wp.z(), wp.color(),
+                                wp.dimension(), wp.icon()
                             ));
                             migrated = true;
                         } else {
