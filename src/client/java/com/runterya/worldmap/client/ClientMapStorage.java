@@ -5,8 +5,12 @@ import net.minecraft.client.Minecraft;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 
 /**
  * Client-side persistent map storage, saved per server/world.
@@ -18,7 +22,7 @@ public class ClientMapStorage {
 
     /**
      * Call on server join to set the server identifier.
-     * Uses server IP for multiplayer, level name for singleplayer.
+     * Uses server IP for multiplayer and the save's canonical path for singleplayer.
      */
     public static void setCurrentServer() {
         Minecraft mc = Minecraft.getInstance();
@@ -26,10 +30,26 @@ public class ClientMapStorage {
             // Multiplayer: use server address (sanitized)
             currentServerId = sanitize(mc.getCurrentServer().ip);
         } else if (mc.getSingleplayerServer() != null) {
-            // Singleplayer: use world folder name
-            currentServerId = "singleplayer_" + sanitize(mc.getSingleplayerServer().getWorldData().getLevelName());
+            // Level names are user-editable and can be duplicated across saves.
+            // Include a hash of the save path so each local world gets its own map.
+            Path worldPath = mc.getSingleplayerServer()
+                .getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .toAbsolutePath()
+                .normalize();
+            String worldName = worldPath.getFileName() == null ? "world" : worldPath.getFileName().toString();
+            currentServerId = "singleplayer_" + sanitize(worldName) + "_" + hashWorldPath(worldPath);
         } else {
             currentServerId = "unknown";
+        }
+    }
+
+    private static String hashWorldPath(Path worldPath) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(worldPath.toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 
