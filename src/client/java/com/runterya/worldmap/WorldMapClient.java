@@ -92,7 +92,7 @@ public class WorldMapClient implements ClientModInitializer {
             }
         });
 
-        ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> ClientMapManager.queueChunk(chunk));
+        ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> ClientMapManager.onChunkLoad(chunk));
         ClientChunkEvents.CHUNK_UNLOAD.register((level, chunk) -> ClientMapManager.unloadChunk(chunk));
 
         // 3D Waypoint Text

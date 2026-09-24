@@ -23,7 +23,7 @@ public class ClientMapManager {
     private static final Queue<LevelChunk> pendingChunks = new ConcurrentLinkedQueue<>();
     private static final Set<LevelChunk> pendingChunkSet = ConcurrentHashMap.newKeySet();
     /** Chunks that loaded before the server handshake can be re-reported on join. */
-    private static final Set<LevelChunk> loadedChunks = ConcurrentHashMap.newKeySet();
+    private static final Map<Long, LevelChunk> loadedChunks = new ConcurrentHashMap<>();
     /** Chunks resolved from this client's actual loaded world and tint resources. */
     private static final Set<Long> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
 
@@ -39,15 +39,35 @@ public class ClientMapManager {
 
     /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
     public static void queueChunk(LevelChunk chunk) {
-        loadedChunks.add(chunk);
+        loadedChunks.put(chunkKey(chunk.getPos().x(), chunk.getPos().z()), chunk);
         if (pendingChunkSet.add(chunk)) {
             pendingChunks.offer(chunk);
         }
     }
 
+    /**
+     * Biome tint sources sample neighboring positions. When a new chunk arrives,
+     * re-extract loaded neighbors too so their edge colors no longer use the
+     * temporary fallback tint from before this chunk was available.
+     */
+    public static void onChunkLoad(LevelChunk chunk) {
+        queueChunk(chunk);
+        int chunkX = chunk.getPos().x();
+        int chunkZ = chunk.getPos().z();
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) continue;
+                LevelChunk neighbor = loadedChunks.get(chunkKey(chunkX + dx, chunkZ + dz));
+                if (neighbor != null && neighbor.getLevel() == chunk.getLevel()) {
+                    queueChunk(neighbor);
+                }
+            }
+        }
+    }
+
     /** Remove chunks that leave the client cache. */
     public static void unloadChunk(LevelChunk chunk) {
-        loadedChunks.remove(chunk);
+        loadedChunks.remove(chunkKey(chunk.getPos().x(), chunk.getPos().z()), chunk);
         pendingChunkSet.remove(chunk);
         pendingChunks.remove(chunk);
     }
@@ -56,8 +76,8 @@ public class ClientMapManager {
     public static void queueLoadedChunks() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) return;
-        loadedChunks.removeIf(chunk -> chunk.getLevel() != minecraft.level);
-        for (LevelChunk chunk : loadedChunks) {
+        loadedChunks.entrySet().removeIf(entry -> entry.getValue().getLevel() != minecraft.level);
+        for (LevelChunk chunk : loadedChunks.values()) {
             queueChunk(chunk);
         }
     }
@@ -65,6 +85,10 @@ public class ClientMapManager {
     /** Drop tracked chunk references when leaving a world. */
     public static void forgetLoadedChunks() {
         loadedChunks.clear();
+    }
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
     }
 
     /** Process a small number per tick to avoid freezing while chunks stream in. */
@@ -112,10 +136,6 @@ public class ClientMapManager {
         if (locallyResolvedChunks.contains(chunkKey(chunkX, chunkZ))) return false;
         receiveUpdate(chunkX, chunkZ, colors);
         return true;
-    }
-
-    private static long chunkKey(int chunkX, int chunkZ) {
-        return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
     }
 
     public static void updatePlayerPositions(List<PlayerPos> positions) {
