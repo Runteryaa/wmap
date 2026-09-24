@@ -185,8 +185,8 @@ public class WorldMapClient implements ClientModInitializer {
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(MapUpdatePayload.ID, (payload, ctx) -> {
             ctx.client().execute(() -> {
-                if (ClientMapManager.receiveServerUpdate(payload.chunkX(), payload.chunkZ(), payload.colors())) {
-                    ClientMapStorage.saveChunk(payload.chunkX(), payload.chunkZ(), payload.colors());
+                if (ClientMapManager.receiveServerUpdate(payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors())) {
+                    ClientMapStorage.saveChunk(payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors());
                 }
             });
         });

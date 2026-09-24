@@ -3,16 +3,19 @@ package com.runterya.worldmap.backend;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.level.ChunkPos;
 
 public class MapStorage {
     private final Path storageDir;
-    // Cache of loaded chunk colors: ChunkPos long -> int[256]
-    private final Map<Long, int[]> chunks = new ConcurrentHashMap<>();
+    private record DimensionChunkKey(String dimension, long chunkKey) {}
+    // Cache of loaded chunk colors, isolated by dimension and chunk coordinates.
+    private final Map<DimensionChunkKey, int[]> chunks = new ConcurrentHashMap<>();
 
     public MapStorage(Path storageDir) {
         this.storageDir = storageDir;
@@ -23,36 +26,45 @@ public class MapStorage {
         }
     }
 
-    public void updateChunk(int chunkX, int chunkZ, int[] colors) {
+    public void updateChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
         long key = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
-        chunks.put(key, colors);
-        saveChunk(chunkX, chunkZ, colors);
+        chunks.put(new DimensionChunkKey(dimension, key), colors.clone());
+        saveChunk(dimension, chunkX, chunkZ, colors);
     }
 
-    public int[] getChunk(int chunkX, int chunkZ) {
+    public int[] getChunk(String dimension, int chunkX, int chunkZ) {
         long key = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
-        int[] colors = chunks.get(key);
+        DimensionChunkKey dimensionChunkKey = new DimensionChunkKey(dimension, key);
+        int[] colors = chunks.get(dimensionChunkKey);
         if (colors == null) {
-            colors = loadChunk(chunkX, chunkZ);
+            colors = loadChunk(dimension, chunkX, chunkZ);
             if (colors != null) {
-                chunks.put(key, colors);
+                chunks.put(dimensionChunkKey, colors);
             }
         }
         return colors;
     }
 
-    private Path getRegionFile(int rx, int rz) {
-        return storageDir.resolve("r." + rx + "." + rz + ".map");
+    private Path getRegionFile(String dimension, int rx, int rz) {
+        String encodedDimension = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(dimension.getBytes(StandardCharsets.UTF_8));
+        return storageDir.resolve("dim_" + encodedDimension).resolve("r." + rx + "." + rz + ".map");
     }
 
-    private synchronized void saveChunk(int chunkX, int chunkZ, int[] colors) {
+    private synchronized void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
         int rx = chunkX >> 5;
         int rz = chunkZ >> 5;
         int lx = chunkX & 31;
         int lz = chunkZ & 31;
         int offset = (lz * 32 + lx) * 1024;
 
-        Path file = getRegionFile(rx, rz);
+        Path file = getRegionFile(dimension, rx, rz);
+        try {
+            Files.createDirectories(file.getParent());
+        } catch (IOException exception) {
+            exception.printStackTrace();
+            return;
+        }
         try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "rw")) {
             raf.seek(offset);
             ByteBuffer buf = ByteBuffer.allocate(1024);
@@ -65,14 +77,20 @@ public class MapStorage {
         }
     }
 
-    private synchronized int[] loadChunk(int chunkX, int chunkZ) {
+    private synchronized int[] loadChunk(String dimension, int chunkX, int chunkZ) {
         int rx = chunkX >> 5;
         int rz = chunkZ >> 5;
         int lx = chunkX & 31;
         int lz = chunkZ & 31;
         int offset = (lz * 32 + lx) * 1024;
 
-        Path file = getRegionFile(rx, rz);
+        Path file = getRegionFile(dimension, rx, rz);
+        // Before dimensions were part of storage keys, server map regions lived
+        // directly in the storage root. Treat those legacy files as Overworld.
+        if (!Files.exists(file) && "minecraft:overworld".equals(dimension)) {
+            Path legacyFile = storageDir.resolve("r." + rx + "." + rz + ".map");
+            if (Files.exists(legacyFile)) file = legacyFile;
+        }
         if (!Files.exists(file)) return null;
 
         try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {

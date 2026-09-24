@@ -50,9 +50,11 @@ public class WorldMapServer {
 
     /** Track the previous ChunkTrackingView for each player to detect newly added chunks. */
     private static final java.util.Map<UUID, ChunkTrackingView> lastChunkView = new ConcurrentHashMap<>();
+    private static final java.util.Map<UUID, String> lastPlayerDimension = new ConcurrentHashMap<>();
 
     /** Latest client-resolved colors; also serves joins while disk persistence is pending. */
-    private static final java.util.Map<Long, int[]> clientTintedChunks = new ConcurrentHashMap<>();
+    private record DimensionChunkKey(String dimension, long chunkKey) {}
+    private static final java.util.Map<DimensionChunkKey, int[]> clientTintedChunks = new ConcurrentHashMap<>();
 
     private static long chunkKey(int chunkX, int chunkZ) {
         return (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
@@ -68,8 +70,13 @@ public class WorldMapServer {
                 }
                 // Client biome color resources are authoritative for map tinting;
                 // persist and share the vanilla-resolved colors it reports.
-                clientTintedChunks.put(chunkKey(payload.chunkX(), payload.chunkZ()), payload.colors().clone());
-                broadcastMapUpdate(context.server(), payload.chunkX(), payload.chunkZ(), payload.colors());
+                String playerDimension = context.player().level().dimension().identifier().toString();
+                if (!playerDimension.equals(payload.dimension())) return;
+                clientTintedChunks.put(new DimensionChunkKey(payload.dimension(), chunkKey(payload.chunkX(), payload.chunkZ())), payload.colors().clone());
+                if (storage != null) {
+                    ioExecutor.submit(() -> storage.updateChunk(payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors()));
+                }
+                broadcastMapUpdate(context.server(), payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors());
             });
         });
 
@@ -81,6 +88,7 @@ public class WorldMapServer {
                 // Send saved data where available; extract only chunks not yet mapped.
                 enqueuePlayerView(player, ChunkTrackingView.EMPTY, player.getChunkTrackingView());
                 lastChunkView.put(player.getUUID(), player.getChunkTrackingView());
+                lastPlayerDimension.put(player.getUUID(), player.level().dimension().identifier().toString());
                 
                 // Sync global waypoints
                 ServerPlayNetworking.send(player, new SyncGlobalWaypointsPayload(globalWaypoints));
@@ -120,11 +128,13 @@ public class WorldMapServer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             MODDED_PLAYERS.remove(handler.getPlayer().getUUID());
             lastChunkView.remove(handler.getPlayer().getUUID());
+            lastPlayerDimension.remove(handler.getPlayer().getUUID());
         });
 
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             clientTintedChunks.clear();
             lastChunkView.clear();
+            lastPlayerDimension.clear();
             Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
             
@@ -153,11 +163,12 @@ public class WorldMapServer {
             chunkPos -> {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
-                long key = chunkKey(cx, cz);
+                String dimension = player.level().dimension().identifier().toString();
+                DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(cx, cz));
                 int[] saved = clientTintedChunks.get(key);
-                if (saved == null && storage != null) saved = storage.getChunk(cx, cz);
+                if (saved == null && storage != null) saved = storage.getChunk(dimension, cx, cz);
                 if (saved != null) {
-                    ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
+                    ServerPlayNetworking.send(player, new MapUpdatePayload(dimension, cx, cz, saved));
                 }
 
             },
@@ -210,7 +221,8 @@ public class WorldMapServer {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (MODDED_PLAYERS.contains(player.getUUID())) {
                     positions.add(new PlayerPosPayload.PlayerPos(
-                        player.getUUID(), player.getX(), player.getZ(), player.getYRot(), player.getName().getString()
+                        player.getUUID(), player.getX(), player.getZ(), player.getYRot(), player.getName().getString(),
+                        player.level().dimension().identifier().toString()
                     ));
                 }
             }
@@ -225,23 +237,28 @@ public class WorldMapServer {
                     // Detect chunk view change and enqueue new chunks
                     ChunkTrackingView currentView = player.getChunkTrackingView();
                     ChunkTrackingView previousView = lastChunkView.getOrDefault(player.getUUID(), ChunkTrackingView.EMPTY);
-                    if (currentView != previousView) {
+                    String currentDimension = player.level().dimension().identifier().toString();
+                    String previousDimension = lastPlayerDimension.get(player.getUUID());
+                    if (!currentDimension.equals(previousDimension)) {
+                        enqueuePlayerView(player, ChunkTrackingView.EMPTY, currentView);
+                    } else if (currentView != previousView) {
                         enqueuePlayerView(player, previousView, currentView);
+                    }
+                    if (currentView != previousView || !currentDimension.equals(previousDimension)) {
                         lastChunkView.put(player.getUUID(), currentView);
+                        lastPlayerDimension.put(player.getUUID(), currentDimension);
                     }
                 }
             }
         }
     }
 
-    public static void broadcastMapUpdate(MinecraftServer server, int chunkX, int chunkZ, int[] colors) {
+    public static void broadcastMapUpdate(MinecraftServer server, String dimension, int chunkX, int chunkZ, int[] colors) {
         if (MODDED_PLAYERS.isEmpty()) return;
-        if (storage != null) {
-            ioExecutor.submit(() -> storage.updateChunk(chunkX, chunkZ, colors));
-        }
-        MapUpdatePayload payload = new MapUpdatePayload(chunkX, chunkZ, colors);
+        MapUpdatePayload payload = new MapUpdatePayload(dimension, chunkX, chunkZ, colors);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (MODDED_PLAYERS.contains(player.getUUID())) {
+            if (MODDED_PLAYERS.contains(player.getUUID())
+                && player.level().dimension().identifier().toString().equals(dimension)) {
                 ServerPlayNetworking.send(player, payload);
             }
         }

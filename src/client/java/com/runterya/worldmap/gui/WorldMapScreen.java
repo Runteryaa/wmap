@@ -37,6 +37,9 @@ public class WorldMapScreen extends Screen {
 
         int centerX = this.width / 2;
         int centerY = this.height / 2;
+        String currentDim = Minecraft.getInstance().level != null
+            ? Minecraft.getInstance().level.dimension().identifier().toString()
+            : "minecraft:overworld";
 
         graphics.pose().pushMatrix();
         
@@ -46,7 +49,7 @@ public class WorldMapScreen extends Screen {
         graphics.pose().translate((float) panX, (float) panY);
 
         // Render map regions
-        Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions();
+        Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(currentDim);
         for (Map.Entry<ChunkPos, ClientMapManager.RegionTexture> entry : regions.entrySet()) {
             ChunkPos regionPos = entry.getKey();
             ClientMapManager.RegionTexture texture = entry.getValue();
@@ -66,8 +69,6 @@ public class WorldMapScreen extends Screen {
 
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
-        String currentDim = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.dimension().identifier().toString() : "unknown";
-
         // Render waypoints in screen space
         for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
             if (!wp.getDimension().equals(currentDim)) continue;
@@ -92,7 +93,7 @@ public class WorldMapScreen extends Screen {
         }
 
         // Draw the vanilla player indicators after waypoints so they stay on top.
-        drawPlayerMarkers(graphics, font, centerX, centerY);
+        drawPlayerMarkers(graphics, font, centerX, centerY, currentDim);
 
         // Draw mouse coordinates
         double mouseWorldX = (mouseX - centerX) / scale - panX;
@@ -103,7 +104,7 @@ public class WorldMapScreen extends Screen {
     }
 
     private void drawPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
-                                   net.minecraft.client.gui.Font font, int centerX, int centerY) {
+                                   net.minecraft.client.gui.Font font, int centerX, int centerY, String currentDim) {
         if (Minecraft.getInstance().player != null) {
             var player = Minecraft.getInstance().player;
             double playerX = centerX + (player.getX() + panX) * scale;
@@ -118,6 +119,7 @@ public class WorldMapScreen extends Screen {
         }
 
         for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
+            if (!player.dimension().equals(currentDim)) continue;
             if (Minecraft.getInstance().player != null && player.uuid().equals(Minecraft.getInstance().player.getUUID())) {
                 continue;
             }

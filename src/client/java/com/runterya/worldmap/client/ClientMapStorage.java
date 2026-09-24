@@ -1,5 +1,6 @@
 package com.runterya.worldmap.client;
 
+import com.runterya.worldmap.WorldMapMod;
 import net.minecraft.client.Minecraft;
 
 import java.io.IOException;
@@ -11,6 +12,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Base64;
+import java.util.stream.Stream;
 
 /**
  * Client-side persistent map storage, saved per server/world.
@@ -89,14 +92,20 @@ public class ClientMapStorage {
                 .resolve(currentServerId != null ? currentServerId : "unknown");
     }
 
-    private static Path getRegionFile(int rx, int rz) {
-        return getStorageDir().resolve("r." + rx + "." + rz + ".map");
+    private static Path getDimensionDir(String dimension) {
+        String encodedDimension = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(dimension.getBytes(StandardCharsets.UTF_8));
+        return getStorageDir().resolve("dim_" + encodedDimension);
+    }
+
+    private static Path getRegionFile(String dimension, int rx, int rz) {
+        return getDimensionDir(dimension).resolve("r." + rx + "." + rz + ".map");
     }
 
     /**
      * Save a single chunk's color data to disk.
      */
-    public static void saveChunk(int chunkX, int chunkZ, int[] colors) {
+    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
         if (currentServerId == null) return;
         int rx = chunkX >> 5;
         int rz = chunkZ >> 5;
@@ -104,7 +113,7 @@ public class ClientMapStorage {
         int lz = chunkZ & 31;
         int offset = (lz * 32 + lx) * 1024;
 
-        Path file = getRegionFile(rx, rz);
+        Path file = getRegionFile(dimension, rx, rz);
         try {
             Files.createDirectories(file.getParent());
             try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "rw")) {
@@ -128,16 +137,37 @@ public class ClientMapStorage {
         Path storageDir = getStorageDir();
         if (!Files.exists(storageDir)) return;
 
-        try {
-            Files.list(storageDir)
-                .filter(p -> p.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
-                .forEach(ClientMapStorage::loadRegionFile);
+        try (Stream<Path> paths = Files.list(storageDir)) {
+            for (Path path : paths.toList()) {
+                String name = path.getFileName().toString();
+                if (Files.isRegularFile(path) && name.matches("r\\.-?\\d+\\.-?\\d+\\.map")) {
+                    // Legacy client files had no dimension key; preserve them as Overworld data.
+                    loadRegionFile(path, "minecraft:overworld");
+                } else if (Files.isDirectory(path) && name.startsWith("dim_")) {
+                    try {
+                        String dimension = new String(Base64.getUrlDecoder().decode(name.substring(4)), StandardCharsets.UTF_8);
+                        loadDimensionFiles(path, dimension);
+                    } catch (IllegalArgumentException exception) {
+                        WorldMapMod.LOGGER.warn("Ignoring map folder with invalid dimension key: {}", path);
+                    }
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void loadRegionFile(Path file) {
+    private static void loadDimensionFiles(Path directory, String dimension) {
+        try (Stream<Path> paths = Files.list(directory)) {
+            paths.filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
+                .forEach(path -> loadRegionFile(path, dimension));
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not read map data for dimension {}", dimension, exception);
+        }
+    }
+
+    private static void loadRegionFile(Path file, String dimension) {
         String name = file.getFileName().toString();
         // Parse r.X.Z.map
         String[] parts = name.replace(".map", "").split("\\.");
@@ -168,7 +198,7 @@ public class ClientMapStorage {
                         if (empty) continue;
                         int chunkX = (rx << 5) | lx;
                         int chunkZ = (rz << 5) | lz;
-                        ClientMapManager.receiveUpdate(chunkX, chunkZ, colors);
+                        ClientMapManager.receiveUpdate(dimension, chunkX, chunkZ, colors);
                     }
                 }
             }
