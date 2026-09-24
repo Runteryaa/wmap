@@ -3,6 +3,7 @@ package com.runterya.worldmap.client;
 import com.runterya.worldmap.backend.MapColorExtractor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
@@ -19,11 +20,18 @@ import net.minecraft.resources.Identifier;
 import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Samples visible block textures and combines them with vanilla client biome tints. */
 public final class ClientMapColorExtractor {
     private static final ConcurrentHashMap<Identifier, Integer> TEXTURE_COLORS = new ConcurrentHashMap<>();
+    /** Water-only median filter radius; suppresses tiny biome-color islands without flattening depth. */
+    private static final int WATER_BIOME_FILTER_RADIUS = 4;
+    private static final int WATER_BIOME_FILTER_SIZE = WATER_BIOME_FILTER_RADIUS * 2 + 1;
+    private static final int WATER_BIOME_FILTER_SAMPLE_COUNT = WATER_BIOME_FILTER_SIZE * WATER_BIOME_FILTER_SIZE;
 
     private ClientMapColorExtractor() {}
 
@@ -33,17 +41,79 @@ public final class ClientMapColorExtractor {
             return MapColorExtractor.extract(chunk);
         }
 
+        Map<Long, Integer> waterTintSamples = new HashMap<>();
+        int[] waterTintWindow = new int[WATER_BIOME_FILTER_SAMPLE_COUNT];
+        int[] waterTintReds = new int[WATER_BIOME_FILTER_SAMPLE_COUNT];
+        int[] waterTintGreens = new int[WATER_BIOME_FILTER_SAMPLE_COUNT];
+        int[] waterTintBlues = new int[WATER_BIOME_FILTER_SAMPLE_COUNT];
         return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> {
             if (mapColor == MapColor.WATER) {
-                // Match vanilla's biome-blended water tint instead of sampling
-                // one raw biome color per block. Raw sampling creates abrupt,
-                // patchy color regions at biome boundaries, most noticeable in
-                // darker ocean biomes.
-                return BiomeColors.getAverageWaterColor(level, pos);
+                // Start with vanilla's biome blend, then discard tiny isolated
+                // water-color patches by selecting the neighborhood's median
+                // tint. This changes only the biome tint; depth shading is
+                // applied later by MapColorExtractor and remains per-block.
+                return filteredWaterTint(level, pos, waterTintSamples, waterTintWindow,
+                    waterTintReds, waterTintGreens, waterTintBlues);
             }
             BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
             return tintSource == null ? -1 : tintSource.colorInWorld(state, level, pos);
         }, ClientMapColorExtractor::averageTopTextureColor);
+    }
+
+    private static int filteredWaterTint(ClientLevel level, BlockPos center,
+                                         Map<Long, Integer> sampleCache, int[] samples, int[] reds,
+                                         int[] greens, int[] blues) {
+        int centerTint = cachedWaterTint(level, center, sampleCache);
+        int index = 0;
+        BlockPos.MutableBlockPos samplePos = new BlockPos.MutableBlockPos();
+        for (int dz = -WATER_BIOME_FILTER_RADIUS; dz <= WATER_BIOME_FILTER_RADIUS; dz++) {
+            for (int dx = -WATER_BIOME_FILTER_RADIUS; dx <= WATER_BIOME_FILTER_RADIUS; dx++) {
+                samplePos.set(center.getX() + dx, center.getY(), center.getZ() + dz);
+                // Unknown chunks can return placeholder biome colors. Treat
+                // those samples as the center color instead of painting a
+                // false biome patch at the edge of loaded chunk data.
+                samples[index++] = level.hasChunkAt(samplePos)
+                    ? cachedWaterTint(level, samplePos, sampleCache)
+                    : centerTint;
+            }
+        }
+
+        for (int i = 0; i < WATER_BIOME_FILTER_SAMPLE_COUNT; i++) {
+            reds[i] = (samples[i] >> 16) & 0xFF;
+            greens[i] = (samples[i] >> 8) & 0xFF;
+            blues[i] = samples[i] & 0xFF;
+        }
+        Arrays.sort(reds);
+        Arrays.sort(greens);
+        Arrays.sort(blues);
+
+        int median = WATER_BIOME_FILTER_SAMPLE_COUNT / 2;
+        int medianRed = reds[median];
+        int medianGreen = greens[median];
+        int medianBlue = blues[median];
+        int bestColor = samples[0];
+        int bestDistance = Integer.MAX_VALUE;
+        for (int color : samples) {
+            int redDelta = ((color >> 16) & 0xFF) - medianRed;
+            int greenDelta = ((color >> 8) & 0xFF) - medianGreen;
+            int blueDelta = (color & 0xFF) - medianBlue;
+            int distance = redDelta * redDelta + greenDelta * greenDelta + blueDelta * blueDelta;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestColor = color;
+            }
+        }
+        return 0xFF000000 | (bestColor & 0xFFFFFF);
+    }
+
+    private static int cachedWaterTint(ClientLevel level, BlockPos pos, Map<Long, Integer> sampleCache) {
+        long key = pos.asLong();
+        Integer tint = sampleCache.get(key);
+        if (tint == null) {
+            tint = BiomeColors.getAverageWaterColor(level, pos);
+            sampleCache.put(key, tint);
+        }
+        return tint;
     }
 
     private static int averageTopTextureColor(BlockState state, BlockPos pos) {
