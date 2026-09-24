@@ -1,0 +1,47 @@
+name: Publish Modrinth beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: GitHub release version without the leading v
+        required: true
+        default: 1.2.32
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        minecraft_version:
+          - 26.1.2
+          - 26.2
+          - 26.3
+    steps:
+      - name: Download matching GitHub release jar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          MINECRAFT_VERSION: ${{ matrix.minecraft_version }}
+        run: |
+          mkdir -p build/release
+          gh release download "v${RELEASE_VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "*-mc${MINECRAFT_VERSION}.jar" \
+            --dir build/release
+          test -n "$(find build/release -maxdepth 1 -type f -name '*.jar' -print -quit)"
+      - name: Publish beta to Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3.1
+        with:
+          modrinth-id: ${{ secrets.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: build/release/*.jar
+          name: WorldMap ${{ inputs.version }} for Minecraft ${{ matrix.minecraft_version }}
+          version: ${{ inputs.version }}-mc${{ matrix.minecraft_version }}
+          version-type: beta
+          loaders: fabric
+          game-versions: ${{ matrix.minecraft_version }}
+          changelog: WorldMap beta build for Minecraft ${{ matrix.minecraft_version }}.
