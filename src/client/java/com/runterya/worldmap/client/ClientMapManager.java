@@ -22,6 +22,8 @@ public class ClientMapManager {
     private static List<PlayerPos> otherPlayers = Collections.emptyList();
     private static final Queue<LevelChunk> pendingChunks = new ConcurrentLinkedQueue<>();
     private static final Set<LevelChunk> pendingChunkSet = ConcurrentHashMap.newKeySet();
+    /** Chunks that loaded before the server handshake can be re-reported on join. */
+    private static final Set<LevelChunk> loadedChunks = ConcurrentHashMap.newKeySet();
     /** Chunks resolved from this client's actual loaded world and tint resources. */
     private static final Set<Long> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
 
@@ -37,9 +39,32 @@ public class ClientMapManager {
 
     /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
     public static void queueChunk(LevelChunk chunk) {
+        loadedChunks.add(chunk);
         if (pendingChunkSet.add(chunk)) {
             pendingChunks.offer(chunk);
         }
+    }
+
+    /** Remove chunks that leave the client cache. */
+    public static void unloadChunk(LevelChunk chunk) {
+        loadedChunks.remove(chunk);
+        pendingChunkSet.remove(chunk);
+        pendingChunks.remove(chunk);
+    }
+
+    /** Re-extract chunks that were already loaded when the server handshake completed. */
+    public static void queueLoadedChunks() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) return;
+        loadedChunks.removeIf(chunk -> chunk.getLevel() != minecraft.level);
+        for (LevelChunk chunk : loadedChunks) {
+            queueChunk(chunk);
+        }
+    }
+
+    /** Drop tracked chunk references when leaving a world. */
+    public static void forgetLoadedChunks() {
+        loadedChunks.clear();
     }
 
     /** Process a small number per tick to avoid freezing while chunks stream in. */

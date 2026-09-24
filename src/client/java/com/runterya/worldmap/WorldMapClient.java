@@ -93,6 +93,7 @@ public class WorldMapClient implements ClientModInitializer {
         });
 
         ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> ClientMapManager.queueChunk(chunk));
+        ClientChunkEvents.CHUNK_UNLOAD.register((level, chunk) -> ClientMapManager.unloadChunk(chunk));
 
         // 3D Waypoint Text
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -153,6 +154,7 @@ public class WorldMapClient implements ClientModInitializer {
             );
             cl.execute(() -> {
                 ClientMapManager.clear();
+                ClientMapManager.queueLoadedChunks();
                 ClientMapStorage.loadAllIntoManager();
             });
             if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(HandshakePayload.ID)) {
@@ -162,6 +164,7 @@ public class WorldMapClient implements ClientModInitializer {
 
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, cl) -> {
             ClientMapManager.clear();
+            ClientMapManager.forgetLoadedChunks();
             ClientMapStorage.clearCurrentServer();
             WaypointManager.clearGlobalWaypoints();
             WaypointManager.setServerWaypointSharingAvailable(false);

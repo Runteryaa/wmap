@@ -7,6 +7,9 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.MapColor;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MapColorExtractor {
     @FunctionalInterface
     public interface BiomeTintResolver {
@@ -24,16 +27,7 @@ public class MapColorExtractor {
     }
 
     public static int[] extract(LevelChunk chunk) {
-        // Biome water color is world data, so the dedicated server can resolve
-        // it too. Using the same tint on both sides prevents unexplored chunks
-        // from appearing as bright vanilla MapColor blue until a client report
-        // replaces them.
-        return extract(chunk, (sourceChunk, pos, ignoredState, mapColor) -> {
-            if (mapColor == MapColor.WATER) {
-                return 0xFF000000 | (sourceChunk.getLevel().getBiome(pos).value().getWaterColor() & 0xFFFFFF);
-            }
-            return -1;
-        });
+        return extract(chunk, (sourceChunk, pos, ignoredState, mapColor) -> -1);
     }
 
     /**
@@ -48,6 +42,7 @@ public class MapColorExtractor {
     /** Extracts colors from block textures, biome tints, map colors, and terrain shading. */
     public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver, BlockTextureColorResolver textureResolver) {
         int[] colors = new int[256];
+        WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
             for (int z = 0; z < 16; z++) {
@@ -87,7 +82,12 @@ public class MapColorExtractor {
                 // MapColor remains the safe fallback for dedicated servers.
                 int argb = mapColor.calculateARGBColor(renderedBrightness);
 
-                int tint = tintResolver.resolve(chunk, pos, state, mapColor);
+                // Both client and server use one deterministic water-color
+                // path. Mixing client-blended tints with server raw biome
+                // colors made otherwise matching chunks show visible seams.
+                int tint = isWater
+                    ? waterTint.getColor(pos)
+                    : tintResolver.resolve(chunk, pos, state, mapColor);
                 if (tint == 0xFFFF00FF) tint = -1;
                 int textureColor = isWater ? -1 : textureResolver.resolve(state, pos);
 
@@ -122,6 +122,99 @@ public class MapColorExtractor {
     // 86/74/57/39/30 percent brightness. The curve has no early dark plateau.
     private static final int SHALLOW_FLUID_BLOCKS = 1;
     private static final float FLUID_DARKENING_PER_BLOCK = 0.04f;
+
+    /**
+     * Gives water the default vanilla-sized biome blend on both client and
+     * server, while replacing only isolated one- or two-block color outliers.
+     * This keeps real biome outlines intact and avoids chunk-source seams.
+     */
+    private static final class WaterBiomeTint {
+        private static final int BLEND_RADIUS = 2;
+        private static final int OUTLIER_RADIUS = 1;
+        private static final int OUTLIER_SAMPLE_COUNT = 9;
+        private static final int MAX_CENTER_OUTLIERS = 2;
+        private static final int MIN_DOMINANT_NEIGHBORS = 7;
+
+        private final LevelChunk chunk;
+        private final Map<Long, Integer> biomeWaterColors = new HashMap<>();
+        private final int[] outlierSamples = new int[OUTLIER_SAMPLE_COUNT];
+        private final BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos();
+        private final BlockPos.MutableBlockPos outlierPos = new BlockPos.MutableBlockPos();
+
+        private WaterBiomeTint(LevelChunk chunk) {
+            this.chunk = chunk;
+        }
+
+        private int getColor(BlockPos center) {
+            int red = 0;
+            int green = 0;
+            int blue = 0;
+            int sampleCount = 0;
+            for (int dz = -BLEND_RADIUS; dz <= BLEND_RADIUS; dz++) {
+                for (int dx = -BLEND_RADIUS; dx <= BLEND_RADIUS; dx++) {
+                    int color = getOutlierFilteredColor(
+                        center.getX() + dx, center.getY(), center.getZ() + dz
+                    );
+                    red += (color >> 16) & 0xFF;
+                    green += (color >> 8) & 0xFF;
+                    blue += color & 0xFF;
+                    sampleCount++;
+                }
+            }
+            return 0xFF000000
+                | ((red / sampleCount) << 16)
+                | ((green / sampleCount) << 8)
+                | (blue / sampleCount);
+        }
+
+        private int getOutlierFilteredColor(int x, int y, int z) {
+            int centerColor = getBiomeWaterColor(x, y, z);
+            int index = 0;
+            for (int dz = -OUTLIER_RADIUS; dz <= OUTLIER_RADIUS; dz++) {
+                for (int dx = -OUTLIER_RADIUS; dx <= OUTLIER_RADIUS; dx++) {
+                    outlierPos.set(x + dx, y, z + dz);
+                    outlierSamples[index++] = getBiomeWaterColor(outlierPos);
+                }
+            }
+
+            int dominantColor = centerColor;
+            int dominantCount = 0;
+            int centerCount = 0;
+            for (int color : outlierSamples) {
+                int count = 0;
+                for (int candidate : outlierSamples) {
+                    if (candidate == color) count++;
+                }
+                if (color == centerColor) centerCount = count;
+                if (count > dominantCount) {
+                    dominantCount = count;
+                    dominantColor = color;
+                }
+            }
+
+            if (centerColor != dominantColor
+                && centerCount <= MAX_CENTER_OUTLIERS
+                && dominantCount >= MIN_DOMINANT_NEIGHBORS) {
+                return dominantColor;
+            }
+            return centerColor;
+        }
+
+        private int getBiomeWaterColor(int x, int y, int z) {
+            biomePos.set(x, y, z);
+            return getBiomeWaterColor(biomePos);
+        }
+
+        private int getBiomeWaterColor(BlockPos pos) {
+            long key = pos.asLong();
+            Integer color = biomeWaterColors.get(key);
+            if (color == null) {
+                color = chunk.getLevel().getBiome(pos).value().getWaterColor() & 0xFFFFFF;
+                biomeWaterColors.put(key, color);
+            }
+            return color;
+        }
+    }
 
     private static int getFluidDepth(LevelChunk chunk, BlockPos surfacePos, boolean lava) {
         BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();

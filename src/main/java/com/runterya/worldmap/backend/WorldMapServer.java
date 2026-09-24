@@ -9,10 +9,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkTrackingView;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.LevelChunk;
 
 import java.io.File;
 import java.io.FileReader;
@@ -29,11 +26,9 @@ import com.runterya.worldmap.network.SyncGlobalWaypointsPayload;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,9 +41,6 @@ public class WorldMapServer {
     private static File globalWaypointsFile;
     private static final List<SyncGlobalWaypointsPayload.GlobalWaypoint> globalWaypoints = new ArrayList<>();
 
-    /** How many chunk extractions to process per server tick (avoids freeze). */
-    private static final int CHUNKS_PER_TICK = 8;
-
     /** Background thread for disk I/O so it doesn't block the server thread. */
     private static final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "worldmap-io");
@@ -56,17 +48,8 @@ public class WorldMapServer {
         return t;
     });
 
-    /** Queue of pending chunk sends: [player UUID, chunkX, chunkZ] */
-    private record ChunkTask(UUID playerUUID, int cx, int cz, int attempts) {}
-    private static final Queue<ChunkTask> chunkQueue = new ConcurrentLinkedQueue<>();
-    /** Chunks already scheduled for a fresh extraction during this server session. */
-    private static final Set<Long> refreshedMapChunks = ConcurrentHashMap.newKeySet();
-
     /** Track the previous ChunkTrackingView for each player to detect newly added chunks. */
     private static final java.util.Map<UUID, ChunkTrackingView> lastChunkView = new ConcurrentHashMap<>();
-
-    /** Track chunks that had block updates and need extraction & broadcast. */
-    private static final Set<LevelChunk> dirtyChunks = ConcurrentHashMap.newKeySet();
 
     /** Latest client-resolved colors; also serves joins while disk persistence is pending. */
     private static final java.util.Map<Long, int[]> clientTintedChunks = new ConcurrentHashMap<>();
@@ -141,9 +124,6 @@ public class WorldMapServer {
 
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             clientTintedChunks.clear();
-            dirtyChunks.clear();
-            chunkQueue.clear();
-            refreshedMapChunks.clear();
             lastChunkView.clear();
             Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
@@ -165,7 +145,8 @@ public class WorldMapServer {
     }
 
     /**
-     * Enqueue newly visible chunks (difference between old and new view) for processing.
+     * Send already known map data for newly visible chunks. Clients report freshly
+     * loaded chunks after extracting them with their vanilla client resources.
      */
     private static void enqueuePlayerView(ServerPlayer player, ChunkTrackingView oldView, ChunkTrackingView newView) {
         ChunkTrackingView.difference(oldView, newView,
@@ -179,12 +160,6 @@ public class WorldMapServer {
                     ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
                 }
 
-                // Saved maps can predate the current color/depth algorithm.
-                // Show cached data immediately, then refresh each visible chunk
-                // once so old water shades do not remain as chunk-shaped seams.
-                if (!clientTintedChunks.containsKey(key) && refreshedMapChunks.add(key)) {
-                    chunkQueue.offer(new ChunkTask(player.getUUID(), cx, cz, 0));
-                }
             },
             chunkPos -> {}
         );
@@ -226,71 +201,8 @@ public class WorldMapServer {
         }
     }
 
-    /**
-     * Extract and send a single chunk's map data, saving to disk async.
-     */
-    private static void processChunkTask(ChunkTask task, MinecraftServer server) {
-        ServerPlayer player = server.getPlayerList().getPlayer(task.playerUUID());
-        long key = chunkKey(task.cx(), task.cz());
-        if (player == null || !MODDED_PLAYERS.contains(task.playerUUID())) {
-            refreshedMapChunks.remove(key);
-            return;
-        }
-
-        int[] clientColors = clientTintedChunks.get(key);
-        if (clientColors != null) {
-            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), clientColors));
-            return;
-        }
-
-        ServerLevel level = (ServerLevel) player.level();
-        LevelChunk chunk = level.getChunkSource().getChunkNow(task.cx(), task.cz());
-        if (chunk == null) {
-            if (task.attempts() < 10 && server.getPlayerList().getPlayer(task.playerUUID()) != null) {
-                chunkQueue.offer(new ChunkTask(task.playerUUID(), task.cx(), task.cz(), task.attempts() + 1));
-            } else {
-                refreshedMapChunks.remove(key);
-            }
-            return;
-        }
-
-        // Read the live chunk only on the server thread. Extracting it on a worker
-        // thread raced block updates and could publish partial/older colors.
-        int[] colors = MapColorExtractor.extract(chunk);
-        clientColors = clientTintedChunks.get(key);
-        int[] resolvedColors = clientColors != null ? clientColors : colors;
-        broadcastMapUpdate(server, task.cx(), task.cz(), resolvedColors);
-    }
-
     private static void tick(MinecraftServer server) {
-        // Process a batch of queued chunk tasks per tick
-        int processed = 0;
-        ChunkTask task;
-        while (processed < CHUNKS_PER_TICK && (task = chunkQueue.poll()) != null) {
-            processChunkTask(task, server);
-            processed++;
-        }
-
         if (++tickCount >= 20) {
-            // Process dirty chunks caused by block updates
-            int dirtyProcessed = 0;
-            java.util.Iterator<LevelChunk> iterator = dirtyChunks.iterator();
-            while (iterator.hasNext() && dirtyProcessed < CHUNKS_PER_TICK) {
-                LevelChunk dirtyChunk = iterator.next();
-                iterator.remove();
-                
-                int cx = dirtyChunk.getPos().getMinBlockX() >> 4;
-                int cz = dirtyChunk.getPos().getMinBlockZ() >> 4;
-                if (clientTintedChunks.containsKey(chunkKey(cx, cz))) continue;
-
-                int[] colors = MapColorExtractor.extract(dirtyChunk);
-                if (!clientTintedChunks.containsKey(chunkKey(cx, cz))) {
-                    broadcastMapUpdate(server, cx, cz, colors);
-                }
-                
-                dirtyProcessed++;
-            }
-            
             tickCount = 0;
             if (MODDED_PLAYERS.isEmpty()) return;
 
@@ -320,10 +232,6 @@ public class WorldMapServer {
                 }
             }
         }
-    }
-
-    public static void markChunkDirty(LevelChunk chunk) {
-        dirtyChunks.add(chunk);
     }
 
     public static void broadcastMapUpdate(MinecraftServer server, int chunkX, int chunkZ, int[] colors) {
