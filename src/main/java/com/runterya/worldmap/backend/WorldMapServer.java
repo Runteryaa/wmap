@@ -73,10 +73,13 @@ public class WorldMapServer {
                 String playerDimension = context.player().level().dimension().identifier().toString();
                 if (!playerDimension.equals(payload.dimension())) return;
                 clientTintedChunks.put(new DimensionChunkKey(payload.dimension(), chunkKey(payload.chunkX(), payload.chunkZ())), payload.colors().clone());
+                Set<UUID> explorers = storage == null
+                    ? Set.of(context.player().getUUID())
+                    : storage.addExplorer(payload.dimension(), payload.chunkX(), payload.chunkZ(), context.player().getUUID());
                 if (storage != null) {
                     ioExecutor.submit(() -> storage.updateChunk(payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors()));
                 }
-                broadcastMapUpdate(context.server(), payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors());
+                broadcastMapUpdate(context.server(), payload.dimension(), payload.chunkX(), payload.chunkZ(), payload.colors(), explorers);
             });
         });
 
@@ -85,7 +88,9 @@ public class WorldMapServer {
                 MODDED_PLAYERS.add(context.player().getUUID());
                 ServerPlayer player = context.player();
 
-                // Send saved data where available; extract only chunks not yet mapped.
+                // Restore all discovered shared chunks first, then fill any older
+                // map-only chunks that have no ownership record from the current view.
+                sendDiscoveredMaps(player);
                 enqueuePlayerView(player, ChunkTrackingView.EMPTY, player.getChunkTrackingView());
                 lastChunkView.put(player.getUUID(), player.getChunkTrackingView());
                 lastPlayerDimension.put(player.getUUID(), player.level().dimension().identifier().toString());
@@ -168,12 +173,27 @@ public class WorldMapServer {
                 int[] saved = clientTintedChunks.get(key);
                 if (saved == null && storage != null) saved = storage.getChunk(dimension, cx, cz);
                 if (saved != null) {
-                    ServerPlayNetworking.send(player, new MapUpdatePayload(dimension, cx, cz, saved));
+                    Set<UUID> explorers = storage == null ? Set.of() : storage.getExplorers(dimension, cx, cz);
+                    ServerPlayNetworking.send(player, new MapUpdatePayload(dimension, cx, cz, saved, List.copyOf(explorers)));
                 }
 
             },
             chunkPos -> {}
         );
+    }
+
+    private static void sendDiscoveredMaps(ServerPlayer player) {
+        if (storage == null) return;
+        for (MapStorage.ExploredChunk chunk : storage.getDiscoveredChunks()) {
+            int[] colors = clientTintedChunks.get(new DimensionChunkKey(
+                chunk.dimension(), chunkKey(chunk.chunkX(), chunk.chunkZ())
+            ));
+            if (colors == null) colors = storage.getChunk(chunk.dimension(), chunk.chunkX(), chunk.chunkZ());
+            if (colors == null) continue;
+            ServerPlayNetworking.send(player, new MapUpdatePayload(
+                chunk.dimension(), chunk.chunkX(), chunk.chunkZ(), colors, List.copyOf(chunk.explorers())
+            ));
+        }
     }
 
     private static void loadGlobalWaypoints() {
@@ -253,12 +273,12 @@ public class WorldMapServer {
         }
     }
 
-    public static void broadcastMapUpdate(MinecraftServer server, String dimension, int chunkX, int chunkZ, int[] colors) {
+    public static void broadcastMapUpdate(MinecraftServer server, String dimension, int chunkX, int chunkZ, int[] colors,
+                                          Set<UUID> explorers) {
         if (MODDED_PLAYERS.isEmpty()) return;
-        MapUpdatePayload payload = new MapUpdatePayload(dimension, chunkX, chunkZ, colors);
+        MapUpdatePayload payload = new MapUpdatePayload(dimension, chunkX, chunkZ, colors, List.copyOf(explorers));
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            if (MODDED_PLAYERS.contains(player.getUUID())
-                && player.level().dimension().identifier().toString().equals(dimension)) {
+            if (MODDED_PLAYERS.contains(player.getUUID())) {
                 ServerPlayNetworking.send(player, payload);
             }
         }

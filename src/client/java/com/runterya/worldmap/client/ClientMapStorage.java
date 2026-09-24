@@ -4,6 +4,8 @@ import com.runterya.worldmap.WorldMapMod;
 import net.minecraft.client.Minecraft;
 
 import java.io.IOException;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +15,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -22,6 +29,7 @@ import java.util.stream.Stream;
 public class ClientMapStorage {
 
     private static String currentServerId = null;
+    private static final Map<String, Map<Long, Set<UUID>>> explorerCache = new HashMap<>();
 
     /**
      * Call on server join to set the server identifier.
@@ -58,6 +66,7 @@ public class ClientMapStorage {
 
     public static void clearCurrentServer() {
         currentServerId = null;
+        explorerCache.clear();
     }
 
     public static String getCurrentServerId() {
@@ -105,7 +114,7 @@ public class ClientMapStorage {
     /**
      * Save a single chunk's color data to disk.
      */
-    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
+    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
         if (currentServerId == null) return;
         int rx = chunkX >> 5;
         int rz = chunkZ >> 5;
@@ -127,6 +136,7 @@ public class ClientMapStorage {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        saveExplorers(dimension, chunkX, chunkZ, explorers);
     }
 
     /**
@@ -142,11 +152,12 @@ public class ClientMapStorage {
                 String name = path.getFileName().toString();
                 if (Files.isRegularFile(path) && name.matches("r\\.-?\\d+\\.-?\\d+\\.map")) {
                     // Legacy client files had no dimension key; preserve them as Overworld data.
-                    loadRegionFile(path, "minecraft:overworld");
+                    loadRegionFile(path, "minecraft:overworld", Map.of());
                 } else if (Files.isDirectory(path) && name.startsWith("dim_")) {
                     try {
                         String dimension = new String(Base64.getUrlDecoder().decode(name.substring(4)), StandardCharsets.UTF_8);
-                        loadDimensionFiles(path, dimension);
+                        Map<Long, Set<UUID>> explorers = loadExplorers(path, dimension);
+                        loadDimensionFiles(path, dimension, explorers);
                     } catch (IllegalArgumentException exception) {
                         WorldMapMod.LOGGER.warn("Ignoring map folder with invalid dimension key: {}", path);
                     }
@@ -157,17 +168,17 @@ public class ClientMapStorage {
         }
     }
 
-    private static void loadDimensionFiles(Path directory, String dimension) {
+    private static void loadDimensionFiles(Path directory, String dimension, Map<Long, Set<UUID>> explorers) {
         try (Stream<Path> paths = Files.list(directory)) {
             paths.filter(Files::isRegularFile)
                 .filter(path -> path.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
-                .forEach(path -> loadRegionFile(path, dimension));
+                .forEach(path -> loadRegionFile(path, dimension, explorers));
         } catch (IOException exception) {
             WorldMapMod.LOGGER.warn("Could not read map data for dimension {}", dimension, exception);
         }
     }
 
-    private static void loadRegionFile(Path file, String dimension) {
+    private static void loadRegionFile(Path file, String dimension, Map<Long, Set<UUID>> explorers) {
         String name = file.getFileName().toString();
         // Parse r.X.Z.map
         String[] parts = name.replace(".map", "").split("\\.");
@@ -198,12 +209,61 @@ public class ClientMapStorage {
                         if (empty) continue;
                         int chunkX = (rx << 5) | lx;
                         int chunkZ = (rz << 5) | lz;
-                        ClientMapManager.receiveUpdate(dimension, chunkX, chunkZ, colors);
+                        long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+                        Set<UUID> chunkExplorers = explorers.get(chunkKey);
+                        if (chunkExplorers == null && currentServerId != null && currentServerId.startsWith("singleplayer_")
+                            && Minecraft.getInstance().player != null) {
+                            chunkExplorers = Set.of(Minecraft.getInstance().player.getUUID());
+                        }
+                        ClientMapManager.receiveUpdate(dimension, chunkX, chunkZ, colors,
+                            chunkExplorers == null ? Set.of() : chunkExplorers);
                     }
                 }
             }
         } catch (NumberFormatException | IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static void saveExplorers(String dimension, int chunkX, int chunkZ, Set<UUID> explorers) {
+        if (explorers.isEmpty()) return;
+        long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+        Map<Long, Set<UUID>> byChunk = explorerCache.computeIfAbsent(dimension,
+            key -> loadExplorers(getDimensionDir(key), key));
+        Set<UUID> known = byChunk.computeIfAbsent(chunkKey, ignored -> new HashSet<>());
+        Set<UUID> newlyAdded = new HashSet<>(explorers);
+        newlyAdded.removeAll(known);
+        if (newlyAdded.isEmpty()) return;
+        known.addAll(newlyAdded);
+        Path file = getDimensionDir(dimension).resolve("explorers.dat");
+        try {
+            Files.createDirectories(file.getParent());
+            try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(file,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND))) {
+                for (UUID explorer : newlyAdded) {
+                    output.writeLong(chunkKey);
+                    output.writeLong(explorer.getMostSignificantBits());
+                    output.writeLong(explorer.getLeastSignificantBits());
+                }
+            }
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not save map explorers for dimension {}", dimension, exception);
+        }
+    }
+
+    private static Map<Long, Set<UUID>> loadExplorers(Path directory, String dimension) {
+        Map<Long, Set<UUID>> byChunk = new HashMap<>();
+        Path file = directory.resolve("explorers.dat");
+        if (!Files.exists(file)) return byChunk;
+        try (DataInputStream input = new DataInputStream(Files.newInputStream(file))) {
+            while (input.available() >= 24) {
+                long chunkKey = input.readLong();
+                UUID explorer = new UUID(input.readLong(), input.readLong());
+                byChunk.computeIfAbsent(chunkKey, ignored -> new HashSet<>()).add(explorer);
+            }
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not load map explorers for dimension {}", dimension, exception);
+        }
+        return byChunk;
     }
 }

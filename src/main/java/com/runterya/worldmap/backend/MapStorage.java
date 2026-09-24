@@ -1,21 +1,31 @@
 package com.runterya.worldmap.backend;
 
 import java.io.IOException;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.level.ChunkPos;
 
 public class MapStorage {
     private final Path storageDir;
+    public record ExploredChunk(String dimension, int chunkX, int chunkZ, Set<UUID> explorers) {}
     private record DimensionChunkKey(String dimension, long chunkKey) {}
     // Cache of loaded chunk colors, isolated by dimension and chunk coordinates.
     private final Map<DimensionChunkKey, int[]> chunks = new ConcurrentHashMap<>();
+    private final Map<DimensionChunkKey, Set<UUID>> explorers = new ConcurrentHashMap<>();
+    private final Set<String> loadedExplorerDimensions = ConcurrentHashMap.newKeySet();
 
     public MapStorage(Path storageDir) {
         this.storageDir = storageDir;
@@ -45,10 +55,85 @@ public class MapStorage {
         return colors;
     }
 
+    public synchronized Set<UUID> addExplorer(String dimension, int chunkX, int chunkZ, UUID playerId) {
+        loadExplorers(dimension);
+        long key = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+        DimensionChunkKey dimensionChunkKey = new DimensionChunkKey(dimension, key);
+        Set<UUID> chunkExplorers = explorers.computeIfAbsent(dimensionChunkKey, ignored -> new HashSet<>());
+        if (chunkExplorers.add(playerId)) {
+            Path file = getDimensionDirectory(dimension).resolve("explorers.dat");
+            try {
+                Files.createDirectories(file.getParent());
+                try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(
+                    file, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND
+                ))) {
+                    output.writeLong(key);
+                    output.writeLong(playerId.getMostSignificantBits());
+                    output.writeLong(playerId.getLeastSignificantBits());
+                }
+            } catch (IOException exception) {
+                exception.printStackTrace();
+            }
+        }
+        return Set.copyOf(chunkExplorers);
+    }
+
+    public synchronized Set<UUID> getExplorers(String dimension, int chunkX, int chunkZ) {
+        loadExplorers(dimension);
+        long key = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+        return Set.copyOf(explorers.getOrDefault(new DimensionChunkKey(dimension, key), Set.of()));
+    }
+
+    public synchronized List<ExploredChunk> getDiscoveredChunks() {
+        List<ExploredChunk> discovered = new ArrayList<>();
+        try (var paths = Files.list(storageDir)) {
+            for (Path directory : paths.filter(Files::isDirectory).toList()) {
+                String name = directory.getFileName().toString();
+                if (!name.startsWith("dim_")) continue;
+                final String dimension;
+                try {
+                    dimension = new String(Base64.getUrlDecoder().decode(name.substring(4)), StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException exception) {
+                    continue;
+                }
+                loadExplorers(dimension);
+                for (Map.Entry<DimensionChunkKey, Set<UUID>> entry : explorers.entrySet()) {
+                    DimensionChunkKey key = entry.getKey();
+                    if (!key.dimension().equals(dimension) || entry.getValue().isEmpty()) continue;
+                    int chunkX = (int) (key.chunkKey() >> 32);
+                    int chunkZ = (int) key.chunkKey();
+                    discovered.add(new ExploredChunk(dimension, chunkX, chunkZ, Set.copyOf(entry.getValue())));
+                }
+            }
+        } catch (IOException exception) {
+            exception.printStackTrace();
+        }
+        return discovered;
+    }
+
+    private void loadExplorers(String dimension) {
+        if (!loadedExplorerDimensions.add(dimension)) return;
+        Path file = getDimensionDirectory(dimension).resolve("explorers.dat");
+        if (!Files.exists(file)) return;
+        try (DataInputStream input = new DataInputStream(Files.newInputStream(file))) {
+            while (input.available() >= 24) {
+                long chunkKey = input.readLong();
+                UUID playerId = new UUID(input.readLong(), input.readLong());
+                explorers.computeIfAbsent(new DimensionChunkKey(dimension, chunkKey), ignored -> new HashSet<>()).add(playerId);
+            }
+        } catch (IOException exception) {
+            exception.printStackTrace();
+        }
+    }
+
     private Path getRegionFile(String dimension, int rx, int rz) {
+        return getDimensionDirectory(dimension).resolve("r." + rx + "." + rz + ".map");
+    }
+
+    private Path getDimensionDirectory(String dimension) {
         String encodedDimension = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(dimension.getBytes(StandardCharsets.UTF_8));
-        return storageDir.resolve("dim_" + encodedDimension).resolve("r." + rx + "." + rz + ".map");
+        return storageDir.resolve("dim_" + encodedDimension);
     }
 
     private synchronized void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors) {

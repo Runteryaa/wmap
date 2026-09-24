@@ -1,5 +1,6 @@
 package com.runterya.worldmap.client;
 
+import com.runterya.worldmap.WorldMapConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -14,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Queue;
 import java.util.Set;
+import java.util.UUID;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import com.runterya.worldmap.network.MapColorReportPayload;
 
@@ -26,8 +28,10 @@ public class ClientMapManager {
     private static final Map<Long, LevelChunk> loadedChunks = new ConcurrentHashMap<>();
     /** Chunks resolved from this client's actual loaded world and tint resources. */
     private static final Set<DimensionChunkKey> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
+    private static final Map<DimensionChunkKey, ChunkData> chunkData = new ConcurrentHashMap<>();
 
     private record DimensionChunkKey(String dimension, long chunkKey) {}
+    private record ChunkData(int[] colors, Set<UUID> explorers) {}
 
     /** Clear all in-memory map data (call on world disconnect). */
     public static void clear() {
@@ -37,6 +41,7 @@ public class ClientMapManager {
         pendingChunks.clear();
         pendingChunkSet.clear();
         locallyResolvedChunks.clear();
+        chunkData.clear();
     }
 
     /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
@@ -108,7 +113,7 @@ public class ClientMapManager {
             String dimension = minecraft.level.dimension().identifier().toString();
             int[] colors = ClientMapColorExtractor.extract(chunk);
             receiveLocalUpdate(dimension, chunkX, chunkZ, colors);
-            ClientMapStorage.saveChunk(dimension, chunkX, chunkZ, colors);
+            ClientMapStorage.saveChunk(dimension, chunkX, chunkZ, colors, getExplorers(dimension, chunkX, chunkZ));
 
             if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
                 ClientPlayNetworking.send(new MapColorReportPayload(dimension, chunkX, chunkZ, colors));
@@ -116,7 +121,16 @@ public class ClientMapManager {
         }
     }
 
-    public static void receiveUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
+    public static void receiveUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+        DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
+        ChunkData data = new ChunkData(colors.clone(), Set.copyOf(explorers));
+        chunkData.put(key, data);
+        if (isVisible(data.explorers())) {
+            renderChunk(dimension, chunkX, chunkZ, data.colors());
+        }
+    }
+
+    private static void renderChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
         int regionX = chunkX >> 5;
         int regionZ = chunkZ >> 5;
         ChunkPos regionPos = new ChunkPos(regionX, regionZ);
@@ -128,8 +142,11 @@ public class ClientMapManager {
 
     /** Apply a locally extracted chunk and protect it from stale network copies. */
     public static void receiveLocalUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
-        locallyResolvedChunks.add(new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ)));
-        receiveUpdate(dimension, chunkX, chunkZ, colors);
+        DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
+        locallyResolvedChunks.add(key);
+        Set<UUID> explorers = new java.util.HashSet<>(getExplorers(dimension, chunkX, chunkZ));
+        if (Minecraft.getInstance().player != null) explorers.add(Minecraft.getInstance().player.getUUID());
+        receiveUpdate(dimension, chunkX, chunkZ, colors, explorers);
     }
 
     /**
@@ -137,9 +154,50 @@ public class ClientMapManager {
      * is newer and must not be replaced by a delayed packet from another source.
      */
     public static boolean receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
-        if (locallyResolvedChunks.contains(new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ)))) return false;
-        receiveUpdate(dimension, chunkX, chunkZ, colors);
-        return true;
+        return receiveServerUpdate(dimension, chunkX, chunkZ, colors, Set.of());
+    }
+
+    public static boolean receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+        DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
+        ChunkData previous = chunkData.get(key);
+        Set<UUID> mergedExplorers = new java.util.HashSet<>(previous == null ? Set.of() : previous.explorers());
+        mergedExplorers.addAll(explorers);
+        boolean useServerColor = !locallyResolvedChunks.contains(key);
+        int[] mergedColors = useServerColor || previous == null ? colors : previous.colors();
+        receiveUpdate(dimension, chunkX, chunkZ, mergedColors, mergedExplorers);
+        return useServerColor;
+    }
+
+    public static Set<UUID> getExplorers(String dimension, int chunkX, int chunkZ) {
+        ChunkData data = chunkData.get(new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ)));
+        return data == null ? Set.of() : data.explorers();
+    }
+
+    public static int[] getChunkColors(String dimension, int chunkX, int chunkZ) {
+        ChunkData data = chunkData.get(new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ)));
+        return data == null ? null : data.colors();
+    }
+
+    public static void refreshLayer() {
+        regionsByDimension.values().forEach(regions -> regions.values().forEach(RegionTexture::close));
+        regionsByDimension.clear();
+        chunkData.forEach((key, data) -> {
+            if (isVisible(data.explorers())) {
+                int chunkX = (int) (key.chunkKey() >> 32);
+                int chunkZ = (int) key.chunkKey();
+                renderChunk(key.dimension(), chunkX, chunkZ, data.colors());
+            }
+        });
+    }
+
+    private static boolean isVisible(Set<UUID> explorers) {
+        return switch (WorldMapConfig.mapLayer()) {
+            case MY_EXPLORED -> Minecraft.getInstance().player == null
+                || explorers.contains(Minecraft.getInstance().player.getUUID());
+            case OTHERS_EXPLORED -> Minecraft.getInstance().player == null
+                || explorers.stream().anyMatch(id -> !id.equals(Minecraft.getInstance().player.getUUID()));
+            case ALL -> true;
+        };
     }
 
     public static void updatePlayerPositions(List<PlayerPos> positions) {
