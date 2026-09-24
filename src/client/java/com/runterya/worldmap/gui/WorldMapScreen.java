@@ -3,6 +3,7 @@ package com.runterya.worldmap.gui;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -206,7 +207,7 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
-        if (event.button() == 0) { // Left click drag
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             // Adjust pan based on drag and scale
             this.panX += dragX / this.scale;
             this.panY += dragY / this.scale;
@@ -217,7 +218,7 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
 
@@ -241,9 +242,12 @@ public class WorldMapScreen extends Screen {
                     return true;
                 }
             }
+
+            // Consume the left press so Screen keeps it captured for mouseDragged.
+            return true;
         }
 
-        if (event.button() == 1) { // Right click
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
             
