@@ -101,6 +101,13 @@ public class ClientMapStorage {
                 .resolve(currentServerId != null ? currentServerId : "unknown");
     }
 
+    public static Path getCurrentStorageDirectory() {
+        if (currentServerId == null || currentServerId.equals("unknown")) {
+            throw new IllegalStateException("No world or server is currently selected");
+        }
+        return getStorageDir();
+    }
+
     private static Path getDimensionDir(String dimension) {
         String encodedDimension = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(dimension.getBytes(StandardCharsets.UTF_8));
@@ -114,7 +121,7 @@ public class ClientMapStorage {
     /**
      * Save a single chunk's color data to disk.
      */
-    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+    public static synchronized void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
         if (currentServerId == null) return;
         int rx = chunkX >> 5;
         int rz = chunkZ >> 5;
@@ -137,6 +144,89 @@ public class ClientMapStorage {
             e.printStackTrace();
         }
         saveExplorers(dimension, chunkX, chunkZ, explorers);
+    }
+
+    /** Merge an imported region file without replacing chunks already in the target world. */
+    public static synchronized void mergeImportedRegion(String dimensionFolder, String fileName, byte[] imported) throws IOException {
+        Path storage = getCurrentStorageDirectory().toAbsolutePath().normalize();
+        Path directory = storage.resolve(dimensionFolder).normalize();
+        if (!directory.startsWith(storage)) throw new IOException("Invalid map dimension path");
+        Path destination = directory.resolve(fileName).normalize();
+        if (!destination.startsWith(directory)) throw new IOException("Invalid map region path");
+
+        String[] parts = fileName.replace(".map", "").split("\\.");
+        if (parts.length != 3 || !parts[0].equals("r")) throw new IOException("Invalid region file name");
+        try {
+            Integer.parseInt(parts[1]);
+            Integer.parseInt(parts[2]);
+        } catch (NumberFormatException exception) {
+            throw new IOException("Invalid region coordinates", exception);
+        }
+
+        Files.createDirectories(directory);
+        try (RandomAccessFile raf = new RandomAccessFile(destination.toFile(), "rw")) {
+            for (int offset = 0; offset + 1024 <= imported.length; offset += 1024) {
+                boolean importedChunkHasData = false;
+                for (int i = offset; i < offset + 1024; i++) {
+                    if (imported[i] != 0) {
+                        importedChunkHasData = true;
+                        break;
+                    }
+                }
+                if (!importedChunkHasData) continue;
+
+                boolean destinationChunkHasData = false;
+                if (raf.length() >= offset + 1024) {
+                    byte[] existing = new byte[1024];
+                    raf.seek(offset);
+                    raf.readFully(existing);
+                    for (byte value : existing) {
+                        if (value != 0) {
+                            destinationChunkHasData = true;
+                            break;
+                        }
+                    }
+                }
+                if (!destinationChunkHasData) {
+                    raf.seek(offset);
+                    raf.write(imported, offset, 1024);
+                }
+            }
+        }
+    }
+
+    /** Merge imported chunk ownership records into the target world's append-only log. */
+    public static synchronized void mergeImportedExplorers(String dimension, Map<Long, Set<UUID>> imported) throws IOException {
+        if (imported.isEmpty()) return;
+        Map<Long, Set<UUID>> byChunk = explorerCache.computeIfAbsent(dimension,
+            key -> loadExplorers(getDimensionDir(key), key));
+        Map<Long, Set<UUID>> additions = new HashMap<>();
+        for (Map.Entry<Long, Set<UUID>> entry : imported.entrySet()) {
+            Set<UUID> known = byChunk.computeIfAbsent(entry.getKey(), ignored -> new HashSet<>());
+            Set<UUID> newOwners = new HashSet<>(entry.getValue());
+            newOwners.removeAll(known);
+            if (!newOwners.isEmpty()) {
+                known.addAll(newOwners);
+                additions.put(entry.getKey(), newOwners);
+            }
+        }
+        if (additions.isEmpty()) return;
+
+        Path file = getDimensionDir(dimension).resolve("explorers.dat");
+        Files.createDirectories(file.getParent());
+        try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(file,
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND))) {
+            for (Map.Entry<Long, Set<UUID>> entry : additions.entrySet()) {
+                for (UUID explorer : entry.getValue()) {
+                    output.writeLong(entry.getKey());
+                    output.writeLong(explorer.getMostSignificantBits());
+                    output.writeLong(explorer.getLeastSignificantBits());
+                }
+            }
+        } catch (IOException exception) {
+            explorerCache.remove(dimension);
+            throw exception;
+        }
     }
 
     /**
