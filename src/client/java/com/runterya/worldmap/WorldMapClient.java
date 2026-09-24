@@ -36,6 +36,8 @@ public class WorldMapClient implements ClientModInitializer {
     public void onInitializeClient() {
         WorldMapMod.LOGGER.info("WorldMap Client initializing...");
 
+        WorldMapConfig.load();
+
         mapKeyBinding = ClientPlatform.createKeyMapping("key.worldmap.open", true, CATEGORY);
 
         waypointKeyBinding = ClientPlatform.createKeyMapping("key.worldmap.add_waypoint", false, CATEGORY);
@@ -56,7 +58,9 @@ public class WorldMapClient implements ClientModInitializer {
             if (waypointKeyBinding != null) {
                 while (waypointKeyBinding.consumeClick()) {
                     if (client.player != null && client.level != null) {
-                        Waypoint lookedAtWaypoint = findLookedAtWaypoint(client);
+                        Waypoint lookedAtWaypoint = WorldMapConfig.openWaypointActionsOnLook()
+                            ? findLookedAtWaypoint(client)
+                            : null;
                         if (lookedAtWaypoint != null) {
                             ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WaypointContextMenuScreen(null, lookedAtWaypoint));
                         } else {
