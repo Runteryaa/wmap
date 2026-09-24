@@ -7,13 +7,12 @@ import net.minecraft.network.chat.Component;
 import com.runterya.worldmap.client.waypoint.Waypoint;
 import com.runterya.worldmap.client.waypoint.WaypointManager;
 import com.runterya.worldmap.network.WaypointIcon;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import org.lwjgl.glfw.GLFW;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -184,17 +183,17 @@ public class WaypointAddScreen extends Screen {
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         if (!this.itemPickerOpen) return super.keyPressed(event);
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+        if (event.key() == InputConstants.KEY_ESCAPE) {
             this.itemPickerOpen = false;
             return true;
         }
-        if (event.key() == GLFW.GLFW_KEY_BACKSPACE && !this.itemSearch.isEmpty()) {
+        if (event.key() == InputConstants.KEY_BACKSPACE && !this.itemSearch.isEmpty()) {
             int end = this.itemSearch.offsetByCodePoints(this.itemSearch.length(), -1);
             this.itemSearch = this.itemSearch.substring(0, end);
             filterItems();
             return true;
         }
-        if (event.key() == GLFW.GLFW_KEY_ENTER) {
+        if (event.key() == InputConstants.KEY_RETURN) {
             selectItem(0);
             return true;
         }
@@ -227,7 +226,7 @@ public class WaypointAddScreen extends Screen {
         int button = event.button();
 
         if (this.itemPickerOpen) {
-            if (button != GLFW.GLFW_MOUSE_BUTTON_1) return true;
+            if (button != InputConstants.MOUSE_BUTTON_LEFT) return true;
             int panelX = Math.max(8, (this.width - 290) / 2);
             int panelY = Math.max(8, (this.height - 238) / 2);
             if (mouseX >= panelX + 258 && mouseX <= panelX + 282
