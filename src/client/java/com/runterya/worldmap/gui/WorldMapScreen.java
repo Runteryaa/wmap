@@ -103,37 +103,14 @@ public class WorldMapScreen extends Screen {
                 boolean onScreen = isMapPositionVisible(screenX, screenY);
                 if (!onScreen) {
                     double[] marker = markerScreenPosition(screenX, screenY, centerX, centerY);
-                    float towardWaypoint = (float) Math.toDegrees(
-                        Math.atan2(screenX - centerX, -(screenY - centerY))
-                    );
-                    drawPlayerArrow(graphics, marker[0], marker[1], towardWaypoint,
-                        wp.getColor() | 0xFF000000);
+                    drawWaypointMarker(graphics, wp, marker[0], marker[1]);
                     drawPlayerName(graphics, font, wp.getName(), marker[0], marker[1]);
                     continue;
                 }
 
                 int sx = (int) Math.round(screenX);
                 int sy = (int) Math.round(screenY);
-
-                if (wp.getIcon().isBlank()) {
-                    // Keep the compact colored square as the default marker.
-                    graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
-                    graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
-                } else {
-                    graphics.fill(sx - 5, sy - 5, sx + 5, sy + 5, 0xFF000000);
-                    graphics.fill(sx - 4, sy - 4, sx + 4, sy + 4, wp.getColor() | 0xFF000000);
-                    var iconId = net.minecraft.resources.Identifier.tryParse(wp.getIcon());
-                    var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
-                    if (item == Items.AIR) {
-                        graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, 0xFFFFFFFF);
-                    } else {
-                        graphics.pose().pushMatrix();
-                        graphics.pose().translate(sx - 4, sy - 4);
-                        graphics.pose().scale(0.5f, 0.5f);
-                        graphics.item(new ItemStack(item), 0, 0);
-                        graphics.pose().popMatrix();
-                    }
-                }
+                drawWaypointMarker(graphics, wp, sx, sy);
 
                 // Draw name centered above if hovered
                 if (mouseX >= sx - 7 && mouseX <= sx + 7 && mouseY >= sy - 7 && mouseY <= sy + 7) {
@@ -177,6 +154,32 @@ public class WorldMapScreen extends Screen {
                 continue;
             }
             drawOtherPlayer(graphics, font, player, centerX, centerY);
+        }
+    }
+
+    private void drawWaypointMarker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                    com.runterya.worldmap.client.waypoint.Waypoint wp,
+                                    double screenX, double screenY) {
+        int sx = (int) Math.round(screenX);
+        int sy = (int) Math.round(screenY);
+        if (wp.getIcon().isBlank()) {
+            // Keep the compact colored square as the default marker.
+            graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
+            graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
+        } else {
+            graphics.fill(sx - 5, sy - 5, sx + 5, sy + 5, 0xFF000000);
+            graphics.fill(sx - 4, sy - 4, sx + 4, sy + 4, wp.getColor() | 0xFF000000);
+            var iconId = net.minecraft.resources.Identifier.tryParse(wp.getIcon());
+            var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
+            if (item == Items.AIR) {
+                graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, 0xFFFFFFFF);
+            } else {
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(sx - 4, sy - 4);
+                graphics.pose().scale(0.5f, 0.5f);
+                graphics.item(new ItemStack(item), 0, 0);
+                graphics.pose().popMatrix();
+            }
         }
     }
 
