@@ -575,6 +575,7 @@ public class WorldMapScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
         if (this.itemPickerOpen) return handleWaypointItemPickerClick(event);
+        if (handleWaypointSearchResultClick(event)) return true;
 
         // Let GUI controls (such as the Settings button) handle their clicks first.
         if (super.mouseClicked(event, isDouble)) return true;
@@ -585,29 +586,6 @@ public class WorldMapScreen extends Screen {
             String currentDim = Minecraft.getInstance().level != null
                 ? Minecraft.getInstance().level.dimension().identifier().toString()
                 : "minecraft:overworld";
-
-            if (this.waypointSearchField != null
-                && (!this.waypointSearchField.getValue().isBlank() || !this.selectedSearchItem.isBlank())) {
-                List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
-                int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
-                int panelY = 31;
-                int headerHeight = 18;
-                int visibleRows = Math.min(MAX_SEARCH_RESULTS,
-                    Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
-                int shownRows = Math.min(visibleRows, Math.max(0, results.size() - this.searchScrollOffset));
-                if (event.x() >= panelX && event.x() < panelX + SEARCH_PANEL_WIDTH
-                    && event.y() >= panelY + headerHeight
-                    && event.y() < panelY + headerHeight + shownRows * SEARCH_ROW_HEIGHT) {
-                    int row = (int) (event.y() - panelY - headerHeight) / SEARCH_ROW_HEIGHT;
-                    int selectedIndex = this.searchScrollOffset + row;
-                    if (selectedIndex >= 0 && selectedIndex < results.size()) {
-                        WaypointSearchResult selected = results.get(selectedIndex);
-                        if (selected.player() != null) centerMapOn(selected.player().x(), selected.player().z());
-                        else centerMapOn(selected.waypoint().getX(), selected.waypoint().getZ());
-                    }
-                    return true;
-                }
-            }
 
             if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null) {
                 var localPlayer = Minecraft.getInstance().player;
@@ -697,6 +675,38 @@ public class WorldMapScreen extends Screen {
             return true;
         }
         return false;
+    }
+
+    private boolean handleWaypointSearchResultClick(MouseButtonEvent event) {
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT || this.waypointSearchField == null
+            || (this.waypointSearchField.getValue().isBlank() && this.selectedSearchItem.isBlank())) {
+            return false;
+        }
+
+        String currentDim = Minecraft.getInstance().level != null
+            ? Minecraft.getInstance().level.dimension().identifier().toString()
+            : "minecraft:overworld";
+        List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
+        int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
+        int panelY = 31;
+        int headerHeight = 18;
+        int visibleRows = Math.min(MAX_SEARCH_RESULTS,
+            Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
+        int shownRows = Math.min(visibleRows, Math.max(0, results.size() - this.searchScrollOffset));
+        if (event.x() < panelX || event.x() >= panelX + SEARCH_PANEL_WIDTH
+            || event.y() < panelY + headerHeight
+            || event.y() >= panelY + headerHeight + shownRows * SEARCH_ROW_HEIGHT) {
+            return false;
+        }
+
+        int row = (int) (event.y() - panelY - headerHeight) / SEARCH_ROW_HEIGHT;
+        int selectedIndex = this.searchScrollOffset + row;
+        if (selectedIndex < 0 || selectedIndex >= results.size()) return true;
+
+        WaypointSearchResult selected = results.get(selectedIndex);
+        if (selected.player() != null) centerMapOn(selected.player().x(), selected.player().z());
+        else centerMapOn(selected.waypoint().getX(), selected.waypoint().getZ());
+        return true;
     }
 
     private static boolean isNearMarker(double mouseX, double mouseY, double markerX, double markerY) {
