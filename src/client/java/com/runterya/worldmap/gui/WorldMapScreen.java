@@ -100,7 +100,17 @@ public class WorldMapScreen extends Screen {
                 double screenX = centerX + (wp.getX() + panX) * scale;
                 double screenY = centerY + (wp.getZ() + panY) * scale;
 
-                if (screenX < -50 || screenX > this.width + 50 || screenY < -50 || screenY > this.height + 50) continue;
+                boolean onScreen = isMapPositionVisible(screenX, screenY);
+                if (!onScreen) {
+                    double[] marker = markerScreenPosition(screenX, screenY, centerX, centerY);
+                    float towardWaypoint = (float) Math.toDegrees(
+                        Math.atan2(screenX - centerX, -(screenY - centerY))
+                    );
+                    drawPlayerArrow(graphics, marker[0], marker[1], towardWaypoint,
+                        wp.getColor() | 0xFF000000);
+                    drawPlayerName(graphics, font, wp.getName(), marker[0], marker[1]);
+                    continue;
+                }
 
                 int sx = (int) Math.round(screenX);
                 int sy = (int) Math.round(screenY);
@@ -293,6 +303,25 @@ public class WorldMapScreen extends Screen {
                 }
             }
 
+            if (WorldMapConfig.showWaypoints()) {
+                String dim = Minecraft.getInstance().level != null
+                    ? Minecraft.getInstance().level.dimension().identifier().toString()
+                    : "minecraft:overworld";
+                for (com.runterya.worldmap.client.waypoint.Waypoint wp
+                    : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
+                    if (!wp.getDimension().equals(dim)) continue;
+                    double screenX = centerX + (wp.getX() + panX) * scale;
+                    double screenY = centerY + (wp.getZ() + panY) * scale;
+                    if (isMapPositionVisible(screenX, screenY)) continue;
+
+                    double[] marker = markerScreenPosition(screenX, screenY, centerX, centerY);
+                    if (isNearMarker(event.x(), event.y(), marker[0], marker[1])) {
+                        centerMapOn(wp.getX(), wp.getZ());
+                        return true;
+                    }
+                }
+            }
+
             // Consume the left press so Screen keeps it captured for mouseDragged.
             return true;
         }
@@ -345,6 +374,11 @@ public class WorldMapScreen extends Screen {
         double dx = mouseX - markerX;
         double dy = mouseY - markerY;
         return dx * dx + dy * dy <= 100;
+    }
+
+    private boolean isMapPositionVisible(double screenX, double screenY) {
+        return screenX >= 10 && screenX <= width - 10
+            && screenY >= 10 && screenY <= height - 24;
     }
 
     private void centerMapOn(double worldX, double worldZ) {
