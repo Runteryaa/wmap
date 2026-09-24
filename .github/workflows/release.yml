@@ -20,12 +20,15 @@ jobs:
           - minecraft_version: 26.1.2
             fabric_api_version: 0.151.0+26.1.2
             loom_version: 1.16-SNAPSHOT
+            modmenu_version: 18.0.1
           - minecraft_version: 26.2
             fabric_api_version: 0.161.0+26.2
             loom_version: 1.17.9
+            modmenu_version: 20.0.2
           - minecraft_version: 26.3
             fabric_api_version: 0.161.0+26.3
             loom_version: 1.17.9
+            modmenu_version: 21.0.0
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -45,14 +48,20 @@ jobs:
           -Pminecraft_version=${{ matrix.minecraft_version }}
           -Pfabric_api_version=${{ matrix.fabric_api_version }}
           -Ploom_version=${{ matrix.loom_version }}
-      - name: Save universal jar
-        if: matrix.minecraft_version == '26.1.2'
+          -Pmodmenu_version=${{ matrix.modmenu_version }}
+      - name: Prepare version-specific jar
+        run: |
+          mkdir -p build/release
+          JAR=$(find build/libs -maxdepth 1 -type f -name 'worldmap-*.jar' ! -name '*-sources.jar' -print -quit)
+          test -n "$JAR"
+          VERSION=${JAR##*/worldmap-}
+          VERSION=${VERSION%.jar}
+          cp "$JAR" "build/release/worldmap-${VERSION}-mc${{ matrix.minecraft_version }}.jar"
+      - name: Upload version-specific jar
         uses: actions/upload-artifact@v4
         with:
-          name: worldmap-universal
-          path: |
-            build/libs/*.jar
-            !build/libs/*-sources.jar
+          name: worldmap-mc-${{ matrix.minecraft_version }}
+          path: build/release/*.jar
           if-no-files-found: error
           retention-days: 1
 
@@ -67,10 +76,10 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Download universal jar
+      - name: Download version-specific jars
         uses: actions/download-artifact@v4
         with:
-          path: build/libs
+          path: build/release
           merge-multiple: true
       - name: Get Version
         id: get_version
@@ -91,5 +100,5 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Release ${{ steps.get_version.outputs.version }}
           body_path: CHANGELOG.md
-          files: build/libs/*.jar
+          files: build/release/*.jar
           generate_release_notes: false
