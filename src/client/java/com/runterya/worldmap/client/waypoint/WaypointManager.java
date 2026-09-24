@@ -134,32 +134,6 @@ public class WaypointManager {
         return all;
     }
 
-    /** Import waypoints as private entries scoped to the currently selected world/server. */
-    public static int importWaypoints(List<Waypoint> importedWaypoints) {
-        String currentWorldId = ClientMapStorage.getWaypointWorldId();
-        int added = 0;
-        for (Waypoint imported : importedWaypoints) {
-            if (imported == null || imported.getName() == null || imported.getDimension() == null) continue;
-            boolean duplicate = waypoints.stream().anyMatch(existing ->
-                existing.getWorldId().equals(currentWorldId)
-                    && existing.getName() != null
-                    && existing.getName().equals(imported.getName())
-                    && existing.getDimension() != null
-                    && existing.getDimension().equals(imported.getDimension())
-                    && existing.getX() == imported.getX()
-                    && existing.getY() == imported.getY()
-                    && existing.getZ() == imported.getZ()
-            );
-            if (duplicate) continue;
-            Waypoint local = new Waypoint(imported.getName(), imported.getX(), imported.getY(), imported.getZ(),
-                imported.getColor(), imported.getDimension(), false, currentWorldId, imported.getIcon());
-            waypoints.add(local);
-            added++;
-        }
-        if (added > 0) save();
-        return added;
-    }
-
     /** Assign older, unscoped local waypoints to the first world they are opened in. */
     public static void bindLegacyWaypointsToCurrentWorld() {
         String currentWorldId = ClientMapStorage.getWaypointWorldId();

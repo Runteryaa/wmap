@@ -12,23 +12,18 @@ public class Waypoint {
     private boolean isGlobal;
     private String worldId;
     private String globalId;
-    private WaypointIcon icon = WaypointIcon.NONE;
+    private String icon = "";
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal) {
         this(name, x, y, z, color, dimension, isGlobal, "");
     }
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal, String worldId) {
-        this(name, x, y, z, color, dimension, isGlobal, worldId, WaypointIcon.NONE);
+        this(name, x, y, z, color, dimension, isGlobal, worldId, "");
     }
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal,
-                    WaypointIcon icon) {
-        this(name, x, y, z, color, dimension, isGlobal, "", icon);
-    }
-
-    public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal,
-                    String worldId, WaypointIcon icon) {
+                    String worldId, String icon) {
         this.name = name;
         this.x = x;
         this.y = y;
@@ -37,7 +32,7 @@ public class Waypoint {
         this.dimension = dimension;
         this.isGlobal = isGlobal;
         this.worldId = worldId;
-        this.icon = icon == null ? WaypointIcon.NONE : icon;
+        this.icon = WaypointIcon.normalize(icon);
     }
 
     public String getName() { return name; }
@@ -52,6 +47,9 @@ public class Waypoint {
     public void setWorldId(String worldId) { this.worldId = worldId; }
     public String getGlobalId() { return globalId == null ? "" : globalId; }
     public void setGlobalId(String globalId) { this.globalId = globalId; }
-    public WaypointIcon getIcon() { return icon == null ? WaypointIcon.NONE : icon; }
-    public void setIcon(WaypointIcon icon) { this.icon = icon == null ? WaypointIcon.NONE : icon; }
+    public String getIcon() {
+        this.icon = WaypointIcon.normalize(this.icon);
+        return this.icon;
+    }
+    public void setIcon(String icon) { this.icon = WaypointIcon.normalize(icon); }
 }

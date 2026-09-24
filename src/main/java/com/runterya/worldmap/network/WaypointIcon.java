@@ -1,28 +1,23 @@
 package com.runterya.worldmap.network;
 
-/** Vanilla item textures used as waypoint markers on the map. */
-public enum WaypointIcon {
-    NONE("None", ""),
-    VILLAGE("Village", "item/bell.png"),
-    PORTAL("Portal", "item/ender_eye.png"),
-    FARM("Farm", "item/wheat.png"),
-    HOME("Home", "item/oak_door.png"),
-    STORAGE("Storage", "item/chest_minecart.png"),
-    MINE("Mine", "item/iron_pickaxe.png");
+import net.minecraft.resources.Identifier;
 
-    private final String label;
-    private final String texturePath;
+/** Normalizes waypoint item IDs and migrates icons saved by older WorldMap versions. */
+public final class WaypointIcon {
+    private WaypointIcon() {}
 
-    WaypointIcon(String label, String texturePath) {
-        this.label = label;
-        this.texturePath = texturePath;
-    }
-
-    public String label() {
-        return label;
-    }
-
-    public String texturePath() {
-        return texturePath;
+    public static String normalize(String value) {
+        if (value == null || value.isBlank() || value.equalsIgnoreCase("NONE")) return "";
+        String legacyItem = switch (value.toUpperCase(java.util.Locale.ROOT)) {
+            case "VILLAGE" -> "minecraft:bell";
+            case "PORTAL" -> "minecraft:ender_eye";
+            case "FARM" -> "minecraft:wheat";
+            case "HOME" -> "minecraft:oak_door";
+            case "STORAGE" -> "minecraft:chest_minecart";
+            case "MINE" -> "minecraft:iron_pickaxe";
+            default -> value;
+        };
+        Identifier identifier = Identifier.tryParse(legacyItem);
+        return identifier == null ? "" : identifier.toString();
     }
 }

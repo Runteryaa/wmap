@@ -11,13 +11,13 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
     public static final CustomPacketPayload.Type<SyncGlobalWaypointsPayload> ID = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("worldmap", "sync_global_waypoints"));
     
     public record GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension,
-                                 WaypointIcon icon) {
+                                 String icon) {
         public GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension) {
-            this(id, name, x, y, z, color, dimension, WaypointIcon.NONE);
+            this(id, name, x, y, z, color, dimension, "");
         }
 
         public GlobalWaypoint {
-            if (icon == null) icon = WaypointIcon.NONE;
+            icon = WaypointIcon.normalize(icon);
         }
     }
 
@@ -32,7 +32,7 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
                 buf.writeInt(wp.z);
                 buf.writeInt(wp.color);
                 buf.writeUtf(wp.dimension);
-                buf.writeEnum(wp.icon);
+                buf.writeUtf(wp.icon);
             }
         },
         buf -> {
@@ -47,7 +47,7 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
                     buf.readInt(),
                     buf.readInt(),
                     buf.readUtf(),
-                    buf.readEnum(WaypointIcon.class)
+                    buf.readUtf()
                 ));
             }
             return new SyncGlobalWaypointsPayload(list);

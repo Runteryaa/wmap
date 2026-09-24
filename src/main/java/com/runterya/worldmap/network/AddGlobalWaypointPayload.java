@@ -6,16 +6,16 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
 public record AddGlobalWaypointPayload(Action action, String id, String name, int x, int y, int z, int color,
-                                       String dimension, WaypointIcon icon) implements CustomPacketPayload {
+                                       String dimension, String icon) implements CustomPacketPayload {
     public enum Action { ADD, UPDATE, REMOVE }
     public static final CustomPacketPayload.Type<AddGlobalWaypointPayload> ID = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("worldmap", "add_global_waypoint"));
 
     public AddGlobalWaypointPayload(Action action, String id, String name, int x, int y, int z, int color, String dimension) {
-        this(action, id, name, x, y, z, color, dimension, WaypointIcon.NONE);
+        this(action, id, name, x, y, z, color, dimension, "");
     }
 
     public AddGlobalWaypointPayload {
-        if (icon == null) icon = WaypointIcon.NONE;
+        icon = WaypointIcon.normalize(icon);
     }
     
     public static final StreamCodec<RegistryFriendlyByteBuf, AddGlobalWaypointPayload> CODEC = StreamCodec.of(
@@ -28,7 +28,7 @@ public record AddGlobalWaypointPayload(Action action, String id, String name, in
             buf.writeInt(payload.z);
             buf.writeInt(payload.color);
             buf.writeUtf(payload.dimension);
-            buf.writeEnum(payload.icon);
+            buf.writeUtf(payload.icon);
         },
         buf -> new AddGlobalWaypointPayload(
             buf.readEnum(Action.class),
@@ -39,7 +39,7 @@ public record AddGlobalWaypointPayload(Action action, String id, String name, in
             buf.readInt(),
             buf.readInt(),
             buf.readUtf(),
-            buf.readEnum(WaypointIcon.class)
+            buf.readUtf()
         )
     );
 
