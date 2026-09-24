@@ -3,6 +3,7 @@ package com.runterya.worldmap.client;
 import com.runterya.worldmap.backend.MapColorExtractor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
+import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
@@ -34,7 +35,11 @@ public final class ClientMapColorExtractor {
 
         return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> {
             if (mapColor == MapColor.WATER) {
-                return 0xFF000000 | (level.getBiome(pos).value().getWaterColor() & 0xFFFFFF);
+                // Match vanilla's biome-blended water tint instead of sampling
+                // one raw biome color per block. Raw sampling creates abrupt,
+                // patchy color regions at biome boundaries, most noticeable in
+                // darker ocean biomes.
+                return BiomeColors.getAverageWaterColor(level, pos);
             }
             BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
             return tintSource == null ? -1 : tintSource.colorInWorld(state, level, pos);
