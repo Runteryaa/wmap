@@ -7,6 +7,10 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import com.runterya.worldmap.network.HandshakePayload;
 import com.runterya.worldmap.network.MapUpdatePayload;
@@ -52,11 +56,16 @@ public class WorldMapClient implements ClientModInitializer {
             if (waypointKeyBinding != null) {
                 while (waypointKeyBinding.consumeClick()) {
                     if (client.player != null && client.level != null) {
-                        int x = client.player.getBlockX();
-                        int y = client.player.getBlockY();
-                        int z = client.player.getBlockZ();
-                        String dim = client.level.dimension().identifier().toString();
-                        ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WaypointAddScreen(null, x, y, z, dim));
+                        Waypoint lookedAtWaypoint = findLookedAtWaypoint(client);
+                        if (lookedAtWaypoint != null) {
+                            ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WaypointContextMenuScreen(null, lookedAtWaypoint));
+                        } else {
+                            int x = client.player.getBlockX();
+                            int y = client.player.getBlockY();
+                            int z = client.player.getBlockZ();
+                            String dim = client.level.dimension().identifier().toString();
+                            ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WaypointAddScreen(null, x, y, z, dim));
+                        }
                     }
                 }
             }
@@ -180,5 +189,40 @@ public class WorldMapClient implements ClientModInitializer {
                 ClientMapManager.updatePlayerPositions(payload.positions());
             });
         });
+    }
+
+    private static Waypoint findLookedAtWaypoint(net.minecraft.client.Minecraft client) {
+        if (client.player == null || client.level == null) return null;
+
+        final double maxDistance = 512.0;
+        Vec3 start = client.player.getEyePosition();
+        Vec3 end = start.add(client.player.getViewVector(1.0F).scale(maxDistance));
+
+        var blockHit = client.level.clip(new ClipContext(
+            start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, client.player
+        ));
+        double nearestDistanceSquared = blockHit.getType() == HitResult.Type.BLOCK
+            ? start.distanceToSqr(blockHit.getLocation())
+            : maxDistance * maxDistance;
+
+        String dimension = client.level.dimension().identifier().toString();
+        Waypoint nearest = null;
+        for (Waypoint waypoint : WaypointManager.getWaypoints()) {
+            if (!waypoint.getDimension().equals(dimension)) continue;
+
+            AABB beamBounds = new AABB(
+                waypoint.getX(), -128.0, waypoint.getZ(),
+                waypoint.getX() + 1.0, client.level.getMaxY(), waypoint.getZ() + 1.0
+            );
+            var intersection = beamBounds.clip(start, end);
+            if (intersection.isEmpty()) continue;
+
+            double distanceSquared = start.distanceToSqr(intersection.get());
+            if (distanceSquared < nearestDistanceSquared) {
+                nearestDistanceSquared = distanceSquared;
+                nearest = waypoint;
+            }
+        }
+        return nearest;
     }
 }
