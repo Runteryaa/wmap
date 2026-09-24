@@ -109,19 +109,23 @@ public class WorldMapScreen extends Screen {
                     graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
                     graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
                 } else {
-                    graphics.fill(sx - 7, sy - 7, sx + 7, sy + 7, 0xFF000000);
-                    graphics.fill(sx - 6, sy - 6, sx + 6, sy + 6, wp.getColor() | 0xFF000000);
+                    graphics.fill(sx - 4, sy - 4, sx + 4, sy + 4, 0xFF000000);
+                    graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, wp.getColor() | 0xFF000000);
                     var iconId = net.minecraft.resources.Identifier.tryParse(wp.getIcon());
                     var item = iconId == null ? Items.AIR : BuiltInRegistries.ITEM.getValue(iconId);
                     if (item == Items.AIR) {
                         graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, 0xFFFFFFFF);
                     } else {
-                        graphics.item(new ItemStack(item), sx - 8, sy - 8);
+                        graphics.pose().pushMatrix();
+                        graphics.pose().translate(sx - 3, sy - 3);
+                        graphics.pose().scale(0.375f, 0.375f);
+                        graphics.item(new ItemStack(item), 0, 0);
+                        graphics.pose().popMatrix();
                     }
                 }
 
                 // Draw name centered above if hovered
-                if (mouseX >= sx - 9 && mouseX <= sx + 9 && mouseY >= sy - 9 && mouseY <= sy + 9) {
+                if (mouseX >= sx - 7 && mouseX <= sx + 7 && mouseY >= sy - 7 && mouseY <= sy + 7) {
                     String name = wp.getName();
                     graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
                 }

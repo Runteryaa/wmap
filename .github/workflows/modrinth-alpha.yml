@@ -6,7 +6,7 @@ on:
       version:
         description: GitHub release version without the leading v
         required: true
-        default: 1.2.48
+        default: 1.2.49
 
 jobs:
   publish:

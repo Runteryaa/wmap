@@ -322,13 +322,17 @@ public class WaypointAddScreen extends Screen {
         int panelY = Math.max(8, (this.height - 238) / 2);
         graphics.fill(0, 0, this.width, this.height, 0xB0000000);
         graphics.fill(panelX, panelY, panelX + 290, panelY + 238, 0xFF202020);
-        graphics.outline(panelX, panelY, panelX + 290, panelY + 238, 0xFFAAAAAA);
+        graphics.outline(panelX, panelY, 290, 238, 0xFFAAAAAA);
         graphics.centeredText(this.font, "Choose waypoint item", panelX + 145, panelY + 8, 0xFFFFFFFF);
         graphics.fill(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF101010);
-        graphics.outline(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF777777);
+        graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
         String visibleSearch = this.itemSearch.length() > 34
             ? this.itemSearch.substring(this.itemSearch.length() - 34) : this.itemSearch;
-        graphics.text(this.font, visibleSearch + "_", panelX + 14, panelY + 31, 0xFFFFFFFF);
+        if (visibleSearch.isEmpty()) {
+            graphics.text(this.font, "Search items by name or ID", panelX + 14, panelY + 31, 0xFF888888);
+        } else {
+            graphics.text(this.font, visibleSearch + "|", panelX + 14, panelY + 31, 0xFFFFFFFF);
+        }
         graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
         graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
 
