@@ -1,5 +1,6 @@
 package com.runterya.worldmap.gui;
 
+import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -34,11 +35,16 @@ public class WorldMapScreen extends Screen {
 
     @Override
     protected void init() {
-        this.addRenderableWidget(Button.builder(Component.literal("Settings"), button ->
+        this.addRenderableWidget(Button.builder(Component.literal("Map settings"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(
                 this.minecraft, new WorldMapConfigScreen(this)
             )
         ).bounds(8, this.height - 28, 100, 20).build());
+        this.addRenderableWidget(Button.builder(Component.literal("Layers"), button ->
+            com.runterya.worldmap.client.ClientPlatform.setScreen(
+                this.minecraft, new MapLayersScreen(this)
+            )
+        ).bounds(114, this.height - 28, 80, 20).build());
     }
 
     @Override
@@ -59,17 +65,19 @@ public class WorldMapScreen extends Screen {
         graphics.pose().translate((float) panX, (float) panY);
 
         // Render map regions
-        Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(currentDim);
-        for (Map.Entry<ChunkPos, ClientMapManager.RegionTexture> entry : regions.entrySet()) {
-            ChunkPos regionPos = entry.getKey();
-            ClientMapManager.RegionTexture texture = entry.getValue();
+        if (WorldMapConfig.showExploredAreas()) {
+            Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(currentDim);
+            for (Map.Entry<ChunkPos, ClientMapManager.RegionTexture> entry : regions.entrySet()) {
+                ChunkPos regionPos = entry.getKey();
+                ClientMapManager.RegionTexture texture = entry.getValue();
 
-            int worldX = regionPos.x() * 512;
-            int worldZ = regionPos.z() * 512;
+                int worldX = regionPos.x() * 512;
+                int worldZ = regionPos.z() * 512;
 
-            if (texture.getTextureLocation() != null) {
-                // Draw 512x512 region texture (id, x0, y0, x1, y1, u0, u1, v0, v1)
-                graphics.blit(texture.getTextureLocation(), worldX, worldZ, worldX + 512, worldZ + 512, 0.0f, 1.0f, 0.0f, 1.0f);
+                if (texture.getTextureLocation() != null) {
+                    // Draw 512x512 region texture (id, x0, y0, x1, y1, u0, u1, v0, v1)
+                    graphics.blit(texture.getTextureLocation(), worldX, worldZ, worldX + 512, worldZ + 512, 0.0f, 1.0f, 0.0f, 1.0f);
+                }
             }
         }
 
@@ -80,30 +88,34 @@ public class WorldMapScreen extends Screen {
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
         // Render waypoints in screen space
-        for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
-            if (!wp.getDimension().equals(currentDim)) continue;
-            
-            double screenX = centerX + (wp.getX() + panX) * scale;
-            double screenY = centerY + (wp.getZ() + panY) * scale;
-            
-            if (screenX < -50 || screenX > this.width + 50 || screenY < -50 || screenY > this.height + 50) continue;
-            
-            int sx = (int) Math.round(screenX);
-            int sy = (int) Math.round(screenY);
-            
-            // Xaero style waypoint marker (outlined box)
-            graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
-            graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
-            
-            // Draw name centered above if hovered
-            if (mouseX >= sx - 4 && mouseX <= sx + 4 && mouseY >= sy - 4 && mouseY <= sy + 4) {
-                String name = wp.getName();
-                graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
+        if (WorldMapConfig.showWaypoints()) {
+            for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
+                if (!wp.getDimension().equals(currentDim)) continue;
+
+                double screenX = centerX + (wp.getX() + panX) * scale;
+                double screenY = centerY + (wp.getZ() + panY) * scale;
+
+                if (screenX < -50 || screenX > this.width + 50 || screenY < -50 || screenY > this.height + 50) continue;
+
+                int sx = (int) Math.round(screenX);
+                int sy = (int) Math.round(screenY);
+
+                // Xaero style waypoint marker (outlined box)
+                graphics.fill(sx - 3, sy - 3, sx + 3, sy + 3, 0xFF000000);
+                graphics.fill(sx - 2, sy - 2, sx + 2, sy + 2, wp.getColor() | 0xFF000000);
+
+                // Draw name centered above if hovered
+                if (mouseX >= sx - 4 && mouseX <= sx + 4 && mouseY >= sy - 4 && mouseY <= sy + 4) {
+                    String name = wp.getName();
+                    graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
+                }
             }
         }
 
         // Draw the vanilla player indicators after waypoints so they stay on top.
-        drawPlayerMarkers(graphics, font, centerX, centerY, currentDim);
+        if (WorldMapConfig.showPlayers()) {
+            drawPlayerMarkers(graphics, font, centerX, centerY, currentDim);
+        }
 
         // Draw mouse coordinates
         double mouseWorldX = (mouseX - centerX) / scale - panX;
@@ -237,7 +249,7 @@ public class WorldMapScreen extends Screen {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
 
-            if (Minecraft.getInstance().player != null) {
+            if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null) {
                 var localPlayer = Minecraft.getInstance().player;
                 double localX = centerX + (localPlayer.getX() + panX) * scale;
                 double localY = centerY + (localPlayer.getZ() + panY) * scale;
@@ -248,13 +260,15 @@ public class WorldMapScreen extends Screen {
                 }
             }
 
-            for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
-                if (Minecraft.getInstance().player != null
-                    && player.uuid().equals(Minecraft.getInstance().player.getUUID())) continue;
-                double[] marker = playerMarkerPosition(player, centerX, centerY);
-                if (isNearMarker(event.x(), event.y(), marker[0], marker[1])) {
-                    centerMapOn(player.x(), player.z());
-                    return true;
+            if (WorldMapConfig.showPlayers()) {
+                for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
+                    if (Minecraft.getInstance().player != null
+                        && player.uuid().equals(Minecraft.getInstance().player.getUUID())) continue;
+                    double[] marker = playerMarkerPosition(player, centerX, centerY);
+                    if (isNearMarker(event.x(), event.y(), marker[0], marker[1])) {
+                        centerMapOn(player.x(), player.z());
+                        return true;
+                    }
                 }
             }
 
@@ -283,11 +297,13 @@ public class WorldMapScreen extends Screen {
             double clickTolerance = Math.max(4.0, 5.0 / this.scale);
             
             com.runterya.worldmap.client.waypoint.Waypoint clickedWaypoint = null;
-            for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
-                if (!wp.getDimension().equals(dim)) continue;
-                if (Math.abs(wp.getX() - worldX) <= clickTolerance && Math.abs(wp.getZ() - worldZ) <= clickTolerance) {
-                    clickedWaypoint = wp;
-                    break;
+            if (WorldMapConfig.showWaypoints()) {
+                for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
+                    if (!wp.getDimension().equals(dim)) continue;
+                    if (Math.abs(wp.getX() - worldX) <= clickTolerance && Math.abs(wp.getZ() - worldZ) <= clickTolerance) {
+                        clickedWaypoint = wp;
+                        break;
+                    }
                 }
             }
             

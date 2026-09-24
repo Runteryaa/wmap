@@ -21,16 +21,21 @@ public final class WorldMapConfigScreen extends Screen {
         this.addRenderableWidget(Button.builder(toggleLabel(), button -> {
             WorldMapConfig.setOpenWaypointActionsOnLook(!WorldMapConfig.openWaypointActionsOnLook());
             button.setMessage(toggleLabel());
-        }).bounds(centerX - 150, centerY - 10, 300, 20).build());
+        }).bounds(centerX - 150, centerY - 40, 300, 20).build());
 
-        this.addRenderableWidget(Button.builder(layerLabel(), button -> {
+        this.addRenderableWidget(Button.builder(exploredAreasLabel(), button -> {
+            WorldMapConfig.toggleShowExploredAreas();
+            button.setMessage(exploredAreasLabel());
+        }).bounds(centerX - 150, centerY - 14, 300, 20).build());
+
+        this.addRenderableWidget(Button.builder(explorationFilterLabel(), button -> {
             WorldMapConfig.cycleMapLayer();
-            button.setMessage(layerLabel());
-        }).bounds(centerX - 150, centerY + 16, 300, 20).build());
+            button.setMessage(explorationFilterLabel());
+        }).bounds(centerX - 150, centerY + 12, 300, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
-        ).bounds(centerX - 100, centerY + 48, 200, 20).build());
+        ).bounds(centerX - 100, centerY + 42, 200, 20).build());
     }
 
     private static Component toggleLabel() {
@@ -38,13 +43,17 @@ public final class WorldMapConfigScreen extends Screen {
             + (WorldMapConfig.openWaypointActionsOnLook() ? "Waypoint actions" : "Add waypoint"));
     }
 
-    private static Component layerLabel() {
+    private static Component exploredAreasLabel() {
+        return Component.literal("Explored map: " + (WorldMapConfig.showExploredAreas() ? "Shown" : "Hidden"));
+    }
+
+    private static Component explorationFilterLabel() {
         String label = switch (WorldMapConfig.mapLayer()) {
             case MY_EXPLORED -> "My explored areas";
             case OTHERS_EXPLORED -> "Others' explored areas";
             case ALL -> "All explored areas";
         };
-        return Component.literal("Shared map layer: " + label);
+        return Component.literal("Explored by: " + label);
     }
 
     @Override

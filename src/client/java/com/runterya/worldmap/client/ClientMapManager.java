@@ -191,6 +191,7 @@ public class ClientMapManager {
     }
 
     private static boolean isVisible(Set<UUID> explorers) {
+        if (!WorldMapConfig.showExploredAreas()) return false;
         return switch (WorldMapConfig.mapLayer()) {
             case MY_EXPLORED -> Minecraft.getInstance().player == null
                 || explorers.contains(Minecraft.getInstance().player.getUUID());

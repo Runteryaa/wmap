@@ -20,6 +20,9 @@ public final class WorldMapConfig {
     private static final Path CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("worldmap.json");
     private static boolean openWaypointActionsOnLook = true;
     private static MapLayer mapLayer = MapLayer.ALL;
+    private static boolean showPlayers = true;
+    private static boolean showWaypoints = true;
+    private static boolean showExploredAreas = true;
 
     private WorldMapConfig() {}
 
@@ -40,6 +43,15 @@ public final class WorldMapConfig {
                 } catch (IllegalArgumentException ignored) {
                     mapLayer = MapLayer.ALL;
                 }
+            }
+            if (config.has("showPlayers") && config.get("showPlayers").isJsonPrimitive()) {
+                showPlayers = config.get("showPlayers").getAsBoolean();
+            }
+            if (config.has("showWaypoints") && config.get("showWaypoints").isJsonPrimitive()) {
+                showWaypoints = config.get("showWaypoints").getAsBoolean();
+            }
+            if (config.has("showExploredAreas") && config.get("showExploredAreas").isJsonPrimitive()) {
+                showExploredAreas = config.get("showExploredAreas").getAsBoolean();
             }
         } catch (Exception exception) {
             WorldMapMod.LOGGER.warn("Could not read worldmap.json; using default client settings", exception);
@@ -66,12 +78,43 @@ public final class WorldMapConfig {
         com.runterya.worldmap.client.ClientMapManager.refreshLayer();
     }
 
+    public static boolean showPlayers() {
+        return showPlayers;
+    }
+
+    public static void toggleShowPlayers() {
+        showPlayers = !showPlayers;
+        save();
+    }
+
+    public static boolean showWaypoints() {
+        return showWaypoints;
+    }
+
+    public static void toggleShowWaypoints() {
+        showWaypoints = !showWaypoints;
+        save();
+    }
+
+    public static boolean showExploredAreas() {
+        return showExploredAreas;
+    }
+
+    public static void toggleShowExploredAreas() {
+        showExploredAreas = !showExploredAreas;
+        save();
+        com.runterya.worldmap.client.ClientMapManager.refreshLayer();
+    }
+
     private static void save() {
         try {
             Files.createDirectories(CONFIG_FILE.getParent());
             JsonObject config = new JsonObject();
             config.addProperty("openWaypointActionsOnLook", openWaypointActionsOnLook);
             config.addProperty("mapLayer", mapLayer.name());
+            config.addProperty("showPlayers", showPlayers);
+            config.addProperty("showWaypoints", showWaypoints);
+            config.addProperty("showExploredAreas", showExploredAreas);
             try (Writer writer = Files.newBufferedWriter(CONFIG_FILE)) {
                 com.google.gson.GsonBuilder gson = new com.google.gson.GsonBuilder().setPrettyPrinting();
                 gson.create().toJson(config, writer);
