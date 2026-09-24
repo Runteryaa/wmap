@@ -57,8 +57,10 @@ public class WorldMapServer {
     });
 
     /** Queue of pending chunk sends: [player UUID, chunkX, chunkZ] */
-    private record ChunkTask(UUID playerUUID, int cx, int cz) {}
+    private record ChunkTask(UUID playerUUID, int cx, int cz, int attempts) {}
     private static final Queue<ChunkTask> chunkQueue = new ConcurrentLinkedQueue<>();
+    /** Chunks already scheduled for a fresh extraction during this server session. */
+    private static final Set<Long> refreshedMapChunks = ConcurrentHashMap.newKeySet();
 
     /** Track the previous ChunkTrackingView for each player to detect newly added chunks. */
     private static final java.util.Map<UUID, ChunkTrackingView> lastChunkView = new ConcurrentHashMap<>();
@@ -141,6 +143,7 @@ public class WorldMapServer {
             clientTintedChunks.clear();
             dirtyChunks.clear();
             chunkQueue.clear();
+            refreshedMapChunks.clear();
             lastChunkView.clear();
             Path worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
             storage = new MapStorage(worldDir.resolve("worldmap").resolve("global"));
@@ -169,12 +172,18 @@ public class WorldMapServer {
             chunkPos -> {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
-                int[] saved = clientTintedChunks.get(chunkKey(cx, cz));
+                long key = chunkKey(cx, cz);
+                int[] saved = clientTintedChunks.get(key);
                 if (saved == null && storage != null) saved = storage.getChunk(cx, cz);
                 if (saved != null) {
                     ServerPlayNetworking.send(player, new MapUpdatePayload(cx, cz, saved));
-                } else {
-                    chunkQueue.offer(new ChunkTask(player.getUUID(), cx, cz));
+                }
+
+                // Saved maps can predate the current color/depth algorithm.
+                // Show cached data immediately, then refresh each visible chunk
+                // once so old water shades do not remain as chunk-shaped seams.
+                if (!clientTintedChunks.containsKey(key) && refreshedMapChunks.add(key)) {
+                    chunkQueue.offer(new ChunkTask(player.getUUID(), cx, cz, 0));
                 }
             },
             chunkPos -> {}
@@ -222,9 +231,12 @@ public class WorldMapServer {
      */
     private static void processChunkTask(ChunkTask task, MinecraftServer server) {
         ServerPlayer player = server.getPlayerList().getPlayer(task.playerUUID());
-        if (player == null || !MODDED_PLAYERS.contains(task.playerUUID())) return;
-
         long key = chunkKey(task.cx(), task.cz());
+        if (player == null || !MODDED_PLAYERS.contains(task.playerUUID())) {
+            refreshedMapChunks.remove(key);
+            return;
+        }
+
         int[] clientColors = clientTintedChunks.get(key);
         if (clientColors != null) {
             ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), clientColors));
@@ -233,19 +245,21 @@ public class WorldMapServer {
 
         ServerLevel level = (ServerLevel) player.level();
         LevelChunk chunk = level.getChunkSource().getChunkNow(task.cx(), task.cz());
-        if (chunk == null) return;
+        if (chunk == null) {
+            if (task.attempts() < 10 && server.getPlayerList().getPlayer(task.playerUUID()) != null) {
+                chunkQueue.offer(new ChunkTask(task.playerUUID(), task.cx(), task.cz(), task.attempts() + 1));
+            } else {
+                refreshedMapChunks.remove(key);
+            }
+            return;
+        }
 
         // Read the live chunk only on the server thread. Extracting it on a worker
         // thread raced block updates and could publish partial/older colors.
         int[] colors = MapColorExtractor.extract(chunk);
         clientColors = clientTintedChunks.get(key);
         int[] resolvedColors = clientColors != null ? clientColors : colors;
-        if (server.getPlayerList().getPlayer(task.playerUUID()) != null) {
-            ServerPlayNetworking.send(player, new MapUpdatePayload(task.cx(), task.cz(), resolvedColors));
-        }
-        if (storage != null) {
-            ioExecutor.submit(() -> storage.updateChunk(task.cx(), task.cz(), resolvedColors));
-        }
+        broadcastMapUpdate(server, task.cx(), task.cz(), resolvedColors);
     }
 
     private static void tick(MinecraftServer server) {
