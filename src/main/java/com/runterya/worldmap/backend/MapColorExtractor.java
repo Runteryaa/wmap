@@ -125,19 +125,28 @@ public class MapColorExtractor {
 
     private static int getFluidDepth(LevelChunk chunk, BlockPos surfacePos, boolean lava) {
         BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();
-        int depth = 0;
+        int surfaceY = surfacePos.getY();
         for (int y = surfacePos.getY(); y >= chunk.getMinY(); y--) {
             scanPos.set(surfacePos.getX(), y, surfacePos.getZ());
             BlockState state = chunk.getBlockState(scanPos);
             boolean matchingFluid = lava
                 ? state.getFluidState().is(FluidTags.LAVA)
-                : state.getMapColor(chunk.getLevel(), scanPos) == MapColor.WATER;
-            if (!matchingFluid) {
-                break;
+                : state.getFluidState().is(FluidTags.WATER);
+            if (matchingFluid) {
+                continue;
             }
-            depth++;
+
+            // Underwater plants and other non-colliding decorations displace
+            // water blocks but do not raise the seabed. Keep measuring through
+            // them so kelp height cannot make a deep ocean look shallow.
+            if (!state.isAir() && state.getCollisionShape(chunk, scanPos).isEmpty()) {
+                continue;
+            }
+
+            // The first solid block (or an air pocket) ends the fluid depth.
+            return surfaceY - y;
         }
-        return depth;
+        return surfaceY - chunk.getMinY() + 1;
     }
 
     private static int multiplyColors(int base, int tint) {

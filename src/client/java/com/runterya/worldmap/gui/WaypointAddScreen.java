@@ -85,7 +85,7 @@ public class WaypointAddScreen extends Screen {
             this.addRenderableWidget(Button.builder(visibilityLabel(), button -> {
                 this.isGlobal = !this.isGlobal;
                 button.setMessage(visibilityLabel());
-            }).bounds(centerX + 10, centerY - 20, 180, 20).build());
+            }).bounds(centerX + 2, centerY - 20, 98, 20).build());
         }
 
         this.addRenderableWidget(Button.builder(Component.literal(this.editingWaypoint == null ? "Add" : "Save"), button -> {
