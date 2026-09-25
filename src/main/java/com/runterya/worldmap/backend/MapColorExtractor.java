@@ -49,25 +49,62 @@ public class MapColorExtractor {
                                 BlockTextureColorResolver textureResolver, boolean netherMidLevel) {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
+        boolean fixedNetherSlice = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
+            chunk.getLevel().dimension().identifier().toString());
+        int netherLogicalHeight = fixedNetherSlice
+            ? chunk.getLevel().dimensionType().logicalHeight()
+            : 0;
+        int netherMidY = fixedNetherSlice
+            ? NetherMapView.getMidLevelY(chunk.getMinY(), chunk.getMaxY(), netherLogicalHeight)
+            : 0;
+        int netherMinY = fixedNetherSlice
+            ? NetherMapView.getMidLevelMinY(chunk.getMinY(), chunk.getMaxY(), netherLogicalHeight)
+            : 0;
+        int netherMaxY = fixedNetherSlice
+            ? NetherMapView.getMidLevelMaxY(chunk.getMinY(), chunk.getMaxY(), netherLogicalHeight)
+            : -1;
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
             for (int z = 0; z < 16; z++) {
-                int y = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
-                    chunk.getLevel().dimension().identifier().toString())
-                    ? chunk.getMinY() + (chunk.getMaxY() - chunk.getMinY()) / 2
+                int y = fixedNetherSlice
+                    ? netherMidY
                     : chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
                 BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z);
                 
                 MapColor mapColor = MapColor.NONE;
                 BlockState state = chunk.getBlockState(pos);
-                boolean fixedNetherSlice = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
-                    chunk.getLevel().dimension().identifier().toString());
                 if (fixedNetherSlice) {
-                    // Cave maps are horizontal slices. Do not scan down from
-                    // this level: that turns a mid-level view into another
-                    // surface search and can select blocks at the Nether floor.
-                    mapColor = state.getMapColor(chunk.getLevel(), pos);
-                    if (state.isAir() || state.is(net.minecraft.world.level.block.Blocks.BEDROCK)) {
+                    // Use the nearest non-air block in the bounded band around
+                    // the logical-height midpoint; fluids are valid samples too.
+                    boolean foundBlock = false;
+                    for (int offset = 0; !foundBlock && offset <= NetherMapView.MID_LEVEL_BAND_RADIUS; offset++) {
+                        int aboveY = y + offset;
+                        if (aboveY <= netherMaxY) {
+                            pos.set(chunk.getPos().getMinBlockX() + x, aboveY,
+                                chunk.getPos().getMinBlockZ() + z);
+                            state = chunk.getBlockState(pos);
+                            if (!state.isAir() && !state.is(net.minecraft.world.level.block.Blocks.BEDROCK)) {
+                                mapColor = state.getMapColor(chunk.getLevel(), pos);
+                                foundBlock = true;
+                                break;
+                            }
+                        }
+
+                        if (offset > 0) {
+                            int belowY = y - offset;
+                            if (belowY >= netherMinY) {
+                                pos.set(chunk.getPos().getMinBlockX() + x, belowY,
+                                    chunk.getPos().getMinBlockZ() + z);
+                                state = chunk.getBlockState(pos);
+                                if (!state.isAir() && !state.is(net.minecraft.world.level.block.Blocks.BEDROCK)) {
+                                    mapColor = state.getMapColor(chunk.getLevel(), pos);
+                                    foundBlock = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!foundBlock) {
                         colors[z * 16 + x] = 0;
                         continue;
                     }

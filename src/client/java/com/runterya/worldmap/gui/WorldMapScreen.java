@@ -191,8 +191,9 @@ public class WorldMapScreen extends Screen {
         }
         Minecraft minecraft = Minecraft.getInstance();
         int midY = minecraft.level == null ? 64
-            : minecraft.level.getMinY() + (minecraft.level.getMaxY() - minecraft.level.getMinY()) / 2;
-        return Component.literal("Nether: Slice Y " + midY);
+            : NetherMapView.getMidLevelY(minecraft.level.getMinY(), minecraft.level.getMaxY(),
+                minecraft.level.dimensionType().logicalHeight());
+        return Component.literal("Nether: Mid-level (~Y " + midY + ")");
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {
