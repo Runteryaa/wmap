@@ -28,6 +28,7 @@ public final class WorldMapConfig {
     private static boolean showWaypoints = true;
     private static boolean showExploredAreas = true;
     private static NetherMapView netherMapView = NetherMapView.BEDROCK_SURFACE;
+    private static int selectedNetherLayerY = Integer.MIN_VALUE;
 
     private WorldMapConfig() {}
 
@@ -72,6 +73,13 @@ public final class WorldMapConfig {
                         ? NetherMapView.CAVE_LAYER : NetherMapView.valueOf(savedView);
                 } catch (IllegalArgumentException ignored) {
                     netherMapView = NetherMapView.BEDROCK_SURFACE;
+                }
+            }
+            if (config.has("selectedNetherLayerY") && config.get("selectedNetherLayerY").isJsonPrimitive()) {
+                try {
+                    selectedNetherLayerY = config.get("selectedNetherLayerY").getAsInt();
+                } catch (NumberFormatException ignored) {
+                    selectedNetherLayerY = Integer.MIN_VALUE;
                 }
             }
         } catch (Exception exception) {
@@ -150,6 +158,23 @@ public final class WorldMapConfig {
         save();
     }
 
+    public static int selectedNetherLayerY(int minY, int maxY, int playerY) {
+        int requestedY = selectedNetherLayerY == Integer.MIN_VALUE ? playerY : selectedNetherLayerY;
+        return NetherMapView.getPlayerLayerY(requestedY, minY, maxY);
+    }
+
+    public static void selectNetherCaveLayer(int layerY) {
+        selectedNetherLayerY = layerY;
+        netherMapView = NetherMapView.CAVE_LAYER;
+        save();
+        com.runterya.worldmap.client.ClientMapManager.queueLoadedChunks();
+    }
+
+    public static void selectNetherBedrockTop() {
+        netherMapView = NetherMapView.BEDROCK_SURFACE;
+        save();
+    }
+
     public static void toggleShowExploredAreas() {
         showExploredAreas = !showExploredAreas;
         save();
@@ -168,6 +193,9 @@ public final class WorldMapConfig {
             config.addProperty("showWaypoints", showWaypoints);
             config.addProperty("showExploredAreas", showExploredAreas);
             config.addProperty("netherMapView", netherMapView.name());
+            if (selectedNetherLayerY != Integer.MIN_VALUE) {
+                config.addProperty("selectedNetherLayerY", selectedNetherLayerY);
+            }
             try (Writer writer = Files.newBufferedWriter(CONFIG_FILE)) {
                 com.google.gson.GsonBuilder gson = new com.google.gson.GsonBuilder().setPrettyPrinting();
                 gson.create().toJson(config, writer);

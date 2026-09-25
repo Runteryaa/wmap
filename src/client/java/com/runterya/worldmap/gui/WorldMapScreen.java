@@ -79,9 +79,9 @@ public class WorldMapScreen extends Screen {
         if (Minecraft.getInstance().level != null
             && NetherMapView.NETHER_DIMENSION.equals(Minecraft.getInstance().level.dimension().identifier().toString())) {
             this.netherViewButton = this.addRenderableWidget(Button.builder(netherViewLabel(), button -> {
-                WorldMapConfig.toggleNetherMapView();
-                button.setMessage(netherViewLabel());
-                ClientMapManager.queueLoadedChunks();
+                com.runterya.worldmap.client.ClientPlatform.setScreen(
+                    this.minecraft, new NetherLayerSelectionScreen(this)
+                );
             }).bounds(112, this.height - 28, 150, 20).build());
         }
         this.waypointSearchField = new EditBox(this.font,
@@ -192,8 +192,8 @@ public class WorldMapScreen extends Screen {
         }
         Minecraft minecraft = Minecraft.getInstance();
         int layerY = minecraft.level == null || minecraft.player == null ? 40
-            : NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
-                minecraft.level.getMinY(), minecraft.level.getMaxY());
+            : WorldMapConfig.selectedNetherLayerY(minecraft.level.getMinY(), minecraft.level.getMaxY(),
+                minecraft.player.blockPosition().getY());
         return Component.literal("Nether: Cave layer Y " + layerY);
     }
 
@@ -202,8 +202,9 @@ public class WorldMapScreen extends Screen {
         if (view == NetherMapView.CAVE_LAYER && Minecraft.getInstance().level != null
             && Minecraft.getInstance().player != null
             && NetherMapView.NETHER_DIMENSION.equals(currentDimension)) {
-            int layerY = NetherMapView.getPlayerLayerY(Minecraft.getInstance().player.blockPosition().getY(),
-                Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
+            int layerY = WorldMapConfig.selectedNetherLayerY(
+                Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY(),
+                Minecraft.getInstance().player.blockPosition().getY());
             return view.storageDimension(currentDimension, layerY);
         }
         return view.storageDimension(currentDimension);

@@ -136,6 +136,10 @@ public class ClientMapManager {
                     nearbyLayers.add(NetherMapView.getNearbyPlayerLayerY(centerLayerY, offset,
                         minecraft.level.getMinY(), minecraft.level.getMaxY()));
                 }
+                if (WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER) {
+                    nearbyLayers.add(WorldMapConfig.selectedNetherLayerY(
+                        minecraft.level.getMinY(), minecraft.level.getMaxY(), centerLayerY));
+                }
                 for (int layerY : nearbyLayers) {
                     saveChunkView(chunk, NetherMapView.CAVE_LAYER, dimension, layerY);
                 }
