@@ -39,6 +39,8 @@ public class WorldMapScreen extends Screen {
     private static final int SEARCH_PANEL_WIDTH = 280;
     private static final int SEARCH_ROW_HEIGHT = 22;
     private static final int MAX_SEARCH_RESULTS = 8;
+    private static final int SEARCH_RESULTS_TOP = 31;
+    private static final int PLAYER_SUGGESTION_HEIGHT = 22;
     private static final int ITEM_PICKER_COLUMNS = 9;
     private static final int ITEM_PICKER_ROWS = 5;
     private record SearchItemEntry(Identifier id, ItemStack stack, String searchName) {}
@@ -133,6 +135,7 @@ public class WorldMapScreen extends Screen {
 
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
+        drawPlayerNameSuggestion(graphics, mouseX, mouseY, currentDim);
         // Render waypoints in screen space
         if (WorldMapConfig.showWaypoints()) {
             for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
@@ -189,6 +192,58 @@ public class WorldMapScreen extends Screen {
                 localPlayer.getName().getString(), currentDim));
         }
         return List.copyOf(players.values());
+    }
+
+    private String getPlayerNameSuggestion(String currentDim) {
+        if (this.waypointSearchField == null) return null;
+        String query = this.waypointSearchField.getValue().trim();
+        if (query.isEmpty()) return null;
+
+        return getPlayersInDimension(currentDim).stream()
+            .map(com.runterya.worldmap.network.PlayerPosPayload.PlayerPos::name)
+            .filter(name -> !name.equalsIgnoreCase(query))
+            .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(query.toLowerCase(Locale.ROOT)))
+            .findFirst()
+            .orElse(null);
+    }
+
+    private void drawPlayerNameSuggestion(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                          int mouseX, int mouseY, String currentDim) {
+        String suggestion = getPlayerNameSuggestion(currentDim);
+        if (suggestion == null) return;
+
+        int x = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
+        int y = SEARCH_RESULTS_TOP;
+        int suggestionWidth = Math.min(190, this.width - 110);
+        boolean hovered = mouseX >= x && mouseX < x + suggestionWidth
+            && mouseY >= y && mouseY < y + PLAYER_SUGGESTION_HEIGHT;
+        graphics.fill(x, y, x + suggestionWidth, y + PLAYER_SUGGESTION_HEIGHT,
+            hovered ? 0xFF45454F : 0xF0202020);
+        graphics.outline(x, y, suggestionWidth, PLAYER_SUGGESTION_HEIGHT, 0xFF777777);
+        graphics.text(this.font, suggestion + "?", x + 6, y + 6, 0xFFFFFFFF, true);
+    }
+
+    private boolean handlePlayerNameSuggestionClick(MouseButtonEvent event) {
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT || this.waypointSearchField == null) return false;
+        String currentDim = Minecraft.getInstance().level != null
+            ? Minecraft.getInstance().level.dimension().identifier().toString()
+            : "minecraft:overworld";
+        String suggestion = getPlayerNameSuggestion(currentDim);
+        if (suggestion == null) return false;
+
+        int x = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
+        int suggestionWidth = Math.min(190, this.width - 110);
+        if (event.x() < x || event.x() >= x + suggestionWidth
+            || event.y() < SEARCH_RESULTS_TOP
+            || event.y() >= SEARCH_RESULTS_TOP + PLAYER_SUGGESTION_HEIGHT) return false;
+
+        this.waypointSearchField.setValue(suggestion);
+        return true;
+    }
+
+    private int searchResultsPanelY(String currentDim) {
+        return SEARCH_RESULTS_TOP
+            + (getPlayerNameSuggestion(currentDim) == null ? 0 : PLAYER_SUGGESTION_HEIGHT);
     }
 
     private List<WaypointSearchResult> getWaypointSearchResults(String currentDim) {
@@ -274,7 +329,7 @@ public class WorldMapScreen extends Screen {
         if (results.isEmpty()) return;
 
         int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
-        int panelY = 31;
+        int panelY = searchResultsPanelY(currentDim);
         int headerHeight = 18;
         int visibleRows = Math.min(MAX_SEARCH_RESULTS,
             Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
@@ -403,6 +458,17 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+        if (!this.itemPickerOpen && event.key() == InputConstants.KEY_TAB
+            && this.waypointSearchField != null && this.waypointSearchField.isFocused()) {
+            String currentDim = Minecraft.getInstance().level != null
+                ? Minecraft.getInstance().level.dimension().identifier().toString()
+                : "minecraft:overworld";
+            String suggestion = getPlayerNameSuggestion(currentDim);
+            if (suggestion != null) {
+                this.waypointSearchField.setValue(suggestion);
+                return true;
+            }
+        }
         if (!this.itemPickerOpen) return super.keyPressed(event);
         if (event.key() == InputConstants.KEY_ESCAPE) {
             this.itemPickerOpen = false;
@@ -576,6 +642,7 @@ public class WorldMapScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
         if (this.itemPickerOpen) return handleWaypointItemPickerClick(event);
+        if (handlePlayerNameSuggestionClick(event)) return true;
         if (handleWaypointSearchResultClick(event)) return true;
 
         // Let GUI controls (such as the Settings button) handle their clicks first.
@@ -689,7 +756,7 @@ public class WorldMapScreen extends Screen {
             : "minecraft:overworld";
         List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
         int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
-        int panelY = 31;
+        int panelY = searchResultsPanelY(currentDim);
         int headerHeight = 18;
         int visibleRows = Math.min(MAX_SEARCH_RESULTS,
             Math.max(1, (this.height - panelY - headerHeight - 36) / SEARCH_ROW_HEIGHT));
@@ -741,13 +808,14 @@ public class WorldMapScreen extends Screen {
             : "minecraft:overworld";
         List<WaypointSearchResult> searchResults = getWaypointSearchResults(currentDim);
         int searchPanelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
+        int searchPanelY = searchResultsPanelY(currentDim);
         int searchVisibleRows = Math.min(MAX_SEARCH_RESULTS,
-            Math.max(1, (this.height - 31 - 36) / SEARCH_ROW_HEIGHT));
+            Math.max(1, (this.height - searchPanelY - 36) / SEARCH_ROW_HEIGHT));
         int searchShownRows = Math.min(searchVisibleRows, searchResults.size());
         int searchHeaderHeight = 18;
         if (searchShownRows > 0 && mouseX >= searchPanelX && mouseX < searchPanelX + SEARCH_PANEL_WIDTH
-            && mouseY >= 31 + searchHeaderHeight
-            && mouseY < 33 + searchHeaderHeight + searchShownRows * SEARCH_ROW_HEIGHT) {
+            && mouseY >= searchPanelY + searchHeaderHeight
+            && mouseY < searchPanelY + searchHeaderHeight + searchShownRows * SEARCH_ROW_HEIGHT) {
             int maxOffset = Math.max(0, searchResults.size() - searchVisibleRows);
             this.searchScrollOffset = Math.max(0, Math.min(maxOffset,
                 this.searchScrollOffset - (int) Math.signum(scrollY)));
