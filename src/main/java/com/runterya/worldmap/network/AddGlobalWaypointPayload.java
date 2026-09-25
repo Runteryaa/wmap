@@ -7,7 +7,7 @@ import net.minecraft.resources.Identifier;
 
 public record AddGlobalWaypointPayload(Action action, String id, String name, int x, int y, int z, int color,
                                        String dimension, String icon) implements CustomPacketPayload {
-    public enum Action { ADD, UPDATE, REMOVE }
+    public enum Action { ADD, UPDATE, REMOVE, DELETE_OWNED }
     public static final CustomPacketPayload.Type<AddGlobalWaypointPayload> ID = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("worldmap", "add_global_waypoint"));
 
     public AddGlobalWaypointPayload(Action action, String id, String name, int x, int y, int z, int color, String dimension) {

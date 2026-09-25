@@ -123,6 +123,7 @@ public class WorldMapServer {
                         yield true;
                     }
                     case REMOVE -> globalWaypoints.removeIf(wp -> wp.id() != null && wp.id().equals(payload.id()));
+                    case DELETE_OWNED -> globalWaypoints.removeIf(wp -> sender.getUUID().toString().equals(wp.creatorUuid()));
                 };
                 if (!changed) return;
                 saveGlobalWaypoints();

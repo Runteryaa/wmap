@@ -69,6 +69,21 @@ public class WaypointManager {
         }
     }
 
+    /** Deletes this client's locally stored waypoints and asks the server to remove their public ones. */
+    public static void deleteAllOwnedWaypoints() {
+        waypoints.clear();
+        save();
+
+        var player = net.minecraft.client.Minecraft.getInstance().player;
+        if (serverWaypointSharingAvailable && player != null) {
+            String ownerUuid = player.getUUID().toString();
+            globalWaypoints.removeIf(waypoint -> ownerUuid.equals(waypoint.getCreatorUuid()));
+            net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
+                AddGlobalWaypointPayload.Action.DELETE_OWNED, "", "", 0, 0, 0, 0, ""
+            ));
+        }
+    }
+
     public static void updateWaypoint(Waypoint original, Waypoint updated) {
         if (original.isGlobal()) {
             if (updated.isGlobal()) {
