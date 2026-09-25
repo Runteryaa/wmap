@@ -106,6 +106,7 @@ public class WorldMapScreen extends Screen {
         String currentDim = Minecraft.getInstance().level != null
             ? Minecraft.getInstance().level.dimension().identifier().toString()
             : "minecraft:overworld";
+        if (this.netherViewButton != null) this.netherViewButton.setMessage(netherViewLabel());
 
         graphics.pose().pushMatrix();
         
@@ -116,7 +117,7 @@ public class WorldMapScreen extends Screen {
 
         // Render map regions
         if (WorldMapConfig.showExploredAreas()) {
-            String mapDimension = WorldMapConfig.netherMapView().storageDimension(currentDim);
+            String mapDimension = currentMapDimension(currentDim);
             Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(mapDimension);
             for (Map.Entry<ChunkPos, ClientMapManager.RegionTexture> entry : regions.entrySet()) {
                 ChunkPos regionPos = entry.getKey();
@@ -190,9 +191,22 @@ public class WorldMapScreen extends Screen {
             return Component.literal("Nether: Bedrock top");
         }
         Minecraft minecraft = Minecraft.getInstance();
-        int startY = minecraft.level == null ? NetherMapView.MID_LEVEL_SCAN_START_Y
-            : NetherMapView.getMidLevelScanStartY(minecraft.level.getMinY(), minecraft.level.getMaxY());
-        return Component.literal("Nether: Mid-level (from Y " + startY + ")");
+        int layerY = minecraft.level == null || minecraft.player == null ? 40
+            : NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
+                minecraft.level.getMinY(), minecraft.level.getMaxY());
+        return Component.literal("Nether: Cave layer Y " + layerY);
+    }
+
+    private static String currentMapDimension(String currentDimension) {
+        NetherMapView view = WorldMapConfig.netherMapView();
+        if (view == NetherMapView.CAVE_LAYER && Minecraft.getInstance().level != null
+            && Minecraft.getInstance().player != null
+            && NetherMapView.NETHER_DIMENSION.equals(currentDimension)) {
+            int layerY = NetherMapView.getPlayerLayerY(Minecraft.getInstance().player.blockPosition().getY(),
+                Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
+            return view.storageDimension(currentDimension, layerY);
+        }
+        return view.storageDimension(currentDimension);
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {

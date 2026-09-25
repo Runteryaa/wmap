@@ -66,7 +66,10 @@ public final class WorldMapConfig {
             }
             if (config.has("netherMapView") && config.get("netherMapView").isJsonPrimitive()) {
                 try {
-                    netherMapView = NetherMapView.valueOf(config.get("netherMapView").getAsString());
+                    String savedView = config.get("netherMapView").getAsString();
+                    // The previous fixed Y=40 mode becomes the player-following cave layer.
+                    netherMapView = "MID_LEVEL".equals(savedView)
+                        ? NetherMapView.CAVE_LAYER : NetherMapView.valueOf(savedView);
                 } catch (IllegalArgumentException ignored) {
                     netherMapView = NetherMapView.BEDROCK_SURFACE;
                 }
@@ -143,7 +146,7 @@ public final class WorldMapConfig {
 
     public static void toggleNetherMapView() {
         netherMapView = netherMapView == NetherMapView.BEDROCK_SURFACE
-            ? NetherMapView.MID_LEVEL : NetherMapView.BEDROCK_SURFACE;
+            ? NetherMapView.CAVE_LAYER : NetherMapView.BEDROCK_SURFACE;
         save();
     }
 

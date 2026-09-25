@@ -73,6 +73,15 @@ public class WorldMapServer {
                 String playerDimension = context.player().level().dimension().identifier().toString();
                 String mapDimension = payload.dimension();
                 if (!playerDimension.equals(NetherMapView.gameDimension(mapDimension))) return;
+                if (NetherMapView.isCaveLayerDimension(mapDimension)) {
+                    int layerY = NetherMapView.getCaveLayerY(mapDimension);
+                    int minY = context.player().level().getMinY();
+                    int maxY = context.player().level().getMaxY();
+                    if (!NetherMapView.NETHER_DIMENSION.equals(playerDimension)
+                        || layerY < minY || layerY >= maxY || Math.floorMod(layerY, NetherMapView.CAVE_LAYER_STEP) != 0) {
+                        return;
+                    }
+                }
                 clientTintedChunks.put(new DimensionChunkKey(payload.dimension(), chunkKey(payload.chunkX(), payload.chunkZ())), payload.colors().clone());
                 Set<UUID> explorers = storage == null
                     ? Set.of(context.player().getUUID())
@@ -189,10 +198,22 @@ public class WorldMapServer {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
                 String dimension = player.level().dimension().identifier().toString();
-                NetherMapView[] views = NetherMapView.NETHER_DIMENSION.equals(dimension)
-                    ? NetherMapView.values() : new NetherMapView[]{NetherMapView.BEDROCK_SURFACE};
-                for (NetherMapView view : views) {
-                    String mapDimension = view.storageDimension(dimension);
+                java.util.List<String> mapDimensions;
+                if (NetherMapView.NETHER_DIMENSION.equals(dimension)) {
+                    int centerLayerY = NetherMapView.getPlayerLayerY(player.blockPosition().getY(),
+                        player.level().getMinY(), player.level().getMaxY());
+                    java.util.LinkedHashSet<String> nearbyLayerDimensions = new java.util.LinkedHashSet<>();
+                    nearbyLayerDimensions.add(NetherMapView.BEDROCK_SURFACE.storageDimension(dimension));
+                    for (int offset = -3; offset <= 3; offset++) {
+                        int layerY = NetherMapView.getNearbyPlayerLayerY(centerLayerY, offset,
+                            player.level().getMinY(), player.level().getMaxY());
+                        nearbyLayerDimensions.add(NetherMapView.CAVE_LAYER.storageDimension(dimension, layerY));
+                    }
+                    mapDimensions = java.util.List.copyOf(nearbyLayerDimensions);
+                } else {
+                    mapDimensions = java.util.List.of(NetherMapView.BEDROCK_SURFACE.storageDimension(dimension));
+                }
+                for (String mapDimension : mapDimensions) {
                     DimensionChunkKey key = new DimensionChunkKey(mapDimension, chunkKey(cx, cz));
                     int[] saved = clientTintedChunks.get(key);
                     if (saved == null && storage != null) saved = storage.getChunk(mapDimension, cx, cz);

@@ -30,6 +30,7 @@ public class ClientMapManager {
     /** Chunks resolved from this client's actual loaded world and tint resources. */
     private static final Set<DimensionChunkKey> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
     private static final Map<DimensionChunkKey, ChunkData> chunkData = new ConcurrentHashMap<>();
+    private static int lastNetherLayerY = Integer.MIN_VALUE;
 
     private record DimensionChunkKey(String dimension, long chunkKey) {}
     private record ChunkData(int[] colors, Set<UUID> explorers) {}
@@ -43,6 +44,7 @@ public class ClientMapManager {
         pendingChunkSet.clear();
         locallyResolvedChunks.clear();
         chunkData.clear();
+        lastNetherLayerY = Integer.MIN_VALUE;
     }
 
     /** Queue a client-loaded chunk for vanilla-tinted map extraction. */
@@ -102,6 +104,16 @@ public class ClientMapManager {
     /** Process a small number per tick to avoid freezing while chunks stream in. */
     public static void processPendingChunks(int limit) {
         Minecraft minecraft = Minecraft.getInstance();
+        int currentNetherLayerY = minecraft.level != null && minecraft.player != null
+            && NetherMapView.NETHER_DIMENSION.equals(minecraft.level.dimension().identifier().toString())
+                ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
+                    minecraft.level.getMinY(), minecraft.level.getMaxY())
+                : Integer.MIN_VALUE;
+        if (currentNetherLayerY != Integer.MIN_VALUE && lastNetherLayerY != currentNetherLayerY) {
+            lastNetherLayerY = currentNetherLayerY;
+            // Re-map currently loaded chunks into the newly selected persistent Y layer.
+            queueLoadedChunks();
+        }
         for (int processed = 0; processed < limit; processed++) {
             LevelChunk chunk = pendingChunks.poll();
             if (chunk == null) return;
@@ -113,17 +125,37 @@ public class ClientMapManager {
             int chunkZ = chunk.getPos().z();
             String dimension = minecraft.level.dimension().identifier().toString();
             boolean inNether = NetherMapView.NETHER_DIMENSION.equals(dimension);
-            for (NetherMapView view : inNether ? NetherMapView.values() : new NetherMapView[]{NetherMapView.BEDROCK_SURFACE}) {
-                String mapDimension = view.storageDimension(dimension);
-                int[] colors = ClientMapColorExtractor.extract(chunk, view);
-                receiveLocalUpdate(mapDimension, chunkX, chunkZ, colors);
-                ClientMapStorage.saveChunk(mapDimension, chunkX, chunkZ, colors,
-                    getExplorers(mapDimension, chunkX, chunkZ));
-
-                if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
-                    ClientPlayNetworking.send(new MapColorReportPayload(mapDimension, chunkX, chunkZ, colors));
+            int centerLayerY = inNether && minecraft.player != null
+                ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
+                    minecraft.level.getMinY(), minecraft.level.getMaxY())
+                : 40;
+            saveChunkView(chunk, NetherMapView.BEDROCK_SURFACE, dimension, 0);
+            if (inNether) {
+                java.util.Set<Integer> nearbyLayers = new java.util.LinkedHashSet<>();
+                for (int offset = -3; offset <= 3; offset++) {
+                    nearbyLayers.add(NetherMapView.getNearbyPlayerLayerY(centerLayerY, offset,
+                        minecraft.level.getMinY(), minecraft.level.getMaxY()));
+                }
+                for (int layerY : nearbyLayers) {
+                    saveChunkView(chunk, NetherMapView.CAVE_LAYER, dimension, layerY);
                 }
             }
+        }
+    }
+
+    private static void saveChunkView(LevelChunk chunk, NetherMapView view, String dimension, int layerY) {
+        int chunkX = chunk.getPos().x();
+        int chunkZ = chunk.getPos().z();
+        String mapDimension = view == NetherMapView.CAVE_LAYER
+            ? view.storageDimension(dimension, layerY)
+            : view.storageDimension(dimension);
+        int[] colors = ClientMapColorExtractor.extract(chunk, view, layerY);
+        receiveLocalUpdate(mapDimension, chunkX, chunkZ, colors);
+        ClientMapStorage.saveChunk(mapDimension, chunkX, chunkZ, colors,
+            getExplorers(mapDimension, chunkX, chunkZ));
+
+        if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
+            ClientPlayNetworking.send(new MapColorReportPayload(mapDimension, chunkX, chunkZ, colors));
         }
     }
 

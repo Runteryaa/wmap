@@ -32,10 +32,15 @@ public final class ClientMapColorExtractor {
     }
 
     public static int[] extract(LevelChunk chunk, NetherMapView mapView) {
+        return extract(chunk, mapView, mapView == NetherMapView.CAVE_LAYER ? 40 : Integer.MIN_VALUE);
+    }
+
+    public static int[] extract(LevelChunk chunk, NetherMapView mapView, int caveLayerY) {
+        int scanStartY = mapView == NetherMapView.CAVE_LAYER ? caveLayerY : Integer.MIN_VALUE;
         var level = Minecraft.getInstance().level;
         if (level == null) {
             return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> -1,
-                (state, pos) -> -1, mapView == NetherMapView.MID_LEVEL);
+                (state, pos) -> -1, scanStartY);
         }
 
         return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> {
@@ -46,7 +51,7 @@ public final class ClientMapColorExtractor {
             }
             BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
             return tintSource == null ? -1 : tintSource.colorInWorld(state, level, pos);
-        }, ClientMapColorExtractor::averageTopTextureColor, mapView == NetherMapView.MID_LEVEL);
+        }, ClientMapColorExtractor::averageTopTextureColor, scanStartY);
     }
 
     private static int averageTopTextureColor(BlockState state, BlockPos pos) {

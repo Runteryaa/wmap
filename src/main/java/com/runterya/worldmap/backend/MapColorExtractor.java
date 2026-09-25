@@ -44,15 +44,24 @@ public class MapColorExtractor {
         return extract(chunk, tintResolver, textureResolver, false);
     }
 
-    /** Extracts the Nether's mid-level view when requested; other dimensions retain the current surface view. */
+    /**
+     * Extracts the legacy fixed Y=40 Nether view when requested; other dimensions retain the current surface view.
+     * Kept for compatibility with existing callers; player-following views should pass their selected Y instead.
+     */
     public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver,
                                 BlockTextureColorResolver textureResolver, boolean netherMidLevel) {
+        return extract(chunk, tintResolver, textureResolver, netherMidLevel ? 40 : Integer.MIN_VALUE);
+    }
+
+    /** Extracts a Nether cave layer by scanning down from its selected Y level. */
+    public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver,
+                                BlockTextureColorResolver textureResolver, int requestedNetherScanStartY) {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
-        boolean fixedNetherSlice = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
+        boolean fixedNetherSlice = requestedNetherScanStartY != Integer.MIN_VALUE && NetherMapView.NETHER_DIMENSION.equals(
             chunk.getLevel().dimension().identifier().toString());
         int netherScanStartY = fixedNetherSlice
-            ? NetherMapView.getMidLevelScanStartY(chunk.getMinY(), chunk.getMaxY())
+            ? Math.max(chunk.getMinY(), Math.min(chunk.getMaxY() - 1, requestedNetherScanStartY))
             : 0;
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
@@ -65,18 +74,18 @@ public class MapColorExtractor {
                 MapColor mapColor = MapColor.NONE;
                 BlockState state = chunk.getBlockState(pos);
                 if (fixedNetherSlice) {
-                    // Match Better Nether Map's approach: treat Y=40 as the
-                    // Nether surface height and let vanilla-style map sampling
-                    // descend to the first map-colored block. This naturally
-                    // finds and colors the lava sea where it is exposed.
+                    // Use the selected cave layer as the vanilla WORLD_SURFACE
+                    // starting height, then walk down to the first map-colored
+                    // block. This creates a horizontal top-down slice at that Y.
                     boolean foundBlock = false;
-                    while (pos.getY() > chunk.getMinY()) {
+                    while (pos.getY() >= chunk.getMinY()) {
                         state = chunk.getBlockState(pos);
                         mapColor = state.getMapColor(chunk.getLevel(), pos);
                         if (mapColor != MapColor.NONE) {
                             foundBlock = true;
                             break;
                         }
+                        if (pos.getY() == chunk.getMinY()) break;
                         pos.move(0, -1, 0);
                     }
                     if (!foundBlock) {
