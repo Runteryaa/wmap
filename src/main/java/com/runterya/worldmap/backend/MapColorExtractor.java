@@ -58,25 +58,25 @@ public class MapColorExtractor {
                                 BlockTextureColorResolver textureResolver, int requestedNetherScanStartY) {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
-        boolean fixedNetherSlice = requestedNetherScanStartY != Integer.MIN_VALUE && NetherMapView.NETHER_DIMENSION.equals(
+        boolean netherCaveLayer = requestedNetherScanStartY != Integer.MIN_VALUE && NetherMapView.NETHER_DIMENSION.equals(
             chunk.getLevel().dimension().identifier().toString());
-        int netherScanStartY = fixedNetherSlice
+        int netherScanStartY = netherCaveLayer
             ? Math.max(chunk.getMinY(), Math.min(chunk.getMaxY() - 1, requestedNetherScanStartY))
             : 0;
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
             for (int z = 0; z < 16; z++) {
-                int y = fixedNetherSlice
+                int y = netherCaveLayer
                     ? netherScanStartY
                     : chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
                 BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z);
                 
                 MapColor mapColor = MapColor.NONE;
                 BlockState state = chunk.getBlockState(pos);
-                if (fixedNetherSlice) {
-                    // Use the selected cave layer as the vanilla WORLD_SURFACE
-                    // starting height, then walk down to the first map-colored
-                    // block. This creates a horizontal top-down slice at that Y.
+                if (netherCaveLayer) {
+                    // Treat the selected cave layer as a scan ceiling. If its
+                    // column is empty, keep searching down to the first visible
+                    // map-colored block so gaps don't erase lower terrain.
                     boolean foundBlock = false;
                     while (pos.getY() >= chunk.getMinY()) {
                         state = chunk.getBlockState(pos);
@@ -121,22 +121,18 @@ public class MapColorExtractor {
                     ? MapColor.Brightness.NORMAL
                     : brightness;
 
-                // The fixed Nether view follows vanilla map colors exactly;
-                // other views use the real client texture when it is available.
+                // Start with the vanilla map color as a server-safe fallback;
+                // clients replace it with the actual block texture below.
                 int argb = mapColor.calculateARGBColor(renderedBrightness);
 
                 // Both client and server use one deterministic water-color
                 // path. Mixing client-blended tints with server raw biome
                 // colors made otherwise matching chunks show visible seams.
-                int tint = fixedNetherSlice
-                    ? -1
-                    : isWater
-                        ? waterTint.getColor(pos)
-                        : tintResolver.resolve(chunk, pos, state, mapColor);
+                int tint = isWater
+                    ? waterTint.getColor(pos)
+                    : tintResolver.resolve(chunk, pos, state, mapColor);
                 if (tint == 0xFFFF00FF) tint = -1;
-                int textureColor = isWater || fixedNetherSlice
-                    ? -1
-                    : textureResolver.resolve(state, pos);
+                int textureColor = isWater ? -1 : textureResolver.resolve(state, pos);
 
                 if (textureColor != -1) {
                     if (tint != -1) {
@@ -149,7 +145,7 @@ public class MapColorExtractor {
                     argb = applyBrightness(tint, renderedBrightness);
                 }
 
-                if ((isWater || isLava) && !fixedNetherSlice) {
+                if (isWater || isLava) {
                     // Count the contiguous fluid column, so both source and
                     // flowing lava receive consistent depth shading.
                     int depth = getFluidDepth(chunk, pos, isLava);
