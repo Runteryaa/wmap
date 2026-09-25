@@ -20,6 +20,7 @@ import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.UUID;
 import java.util.List;
@@ -199,8 +200,21 @@ public class WorldMapScreen extends Screen {
         String query = this.waypointSearchField.getValue().trim();
         if (query.isEmpty()) return null;
 
-        return getPlayersInDimension(currentDim).stream()
+        LinkedHashSet<String> knownPlayerNames = new LinkedHashSet<>();
+        getPlayersInDimension(currentDim).stream()
             .map(com.runterya.worldmap.network.PlayerPosPayload.PlayerPos::name)
+            .filter(name -> name != null && !name.isBlank())
+            .forEach(knownPlayerNames::add);
+        ClientMapManager.getOtherPlayers().stream()
+            .map(com.runterya.worldmap.network.PlayerPosPayload.PlayerPos::name)
+            .filter(name -> name != null && !name.isBlank())
+            .forEach(knownPlayerNames::add);
+        com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints().stream()
+            .map(com.runterya.worldmap.client.waypoint.Waypoint::getCreatorName)
+            .filter(name -> name != null && !name.isBlank())
+            .forEach(knownPlayerNames::add);
+
+        return knownPlayerNames.stream()
             .filter(name -> !name.equalsIgnoreCase(query))
             .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(query.toLowerCase(Locale.ROOT)))
             .findFirst()
