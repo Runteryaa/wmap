@@ -186,8 +186,13 @@ public class WorldMapScreen extends Screen {
     }
 
     private static Component netherViewLabel() {
-        return Component.literal(WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE
-            ? "Nether: Bedrock top" : "Nether: Mid-level");
+        if (WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE) {
+            return Component.literal("Nether: Bedrock top");
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        int midY = minecraft.level == null ? 64
+            : minecraft.level.getMinY() + (minecraft.level.getMaxY() - minecraft.level.getMinY()) / 2;
+        return Component.literal("Nether: Slice Y " + midY);
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {

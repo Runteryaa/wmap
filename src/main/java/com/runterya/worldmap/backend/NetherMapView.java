@@ -6,7 +6,9 @@ public enum NetherMapView {
     MID_LEVEL;
 
     public static final String NETHER_DIMENSION = "minecraft:the_nether";
-    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_mid";
+    // The v2 key intentionally separates the fixed-slice data from the older
+    // mid-level map, which searched downward through the entire Nether column.
+    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_mid_slice_v2";
 
     public String storageDimension(String dimension) {
         return this == MID_LEVEL && NETHER_DIMENSION.equals(dimension)

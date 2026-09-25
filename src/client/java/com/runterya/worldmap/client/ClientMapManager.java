@@ -255,13 +255,11 @@ public class ClientMapManager {
             for (int z = 0; z < 16; z++) {
                 for (int x = 0; x < 16; x++) {
                     int argb = colors[z * 16 + x];
-                    // Ensure opaque
                     int a = (argb >> 24) & 0xFF;
-                    if (a == 0) a = 0xFF;
-                    argb = (a << 24) | (argb & 0xFFFFFF);
                     
-                    // NativeImage expects ARGB in modern versions
-                    this.image.setPixel(startX + x, startZ + z, argb);
+                    // Preserve transparent holes in fixed-height Nether slices;
+                    // ordinary surface map pixels already carry opaque alpha.
+                    this.image.setPixel(startX + x, startZ + z, (a << 24) | (argb & 0xFFFFFF));
                 }
             }
             this.isDirty = true;

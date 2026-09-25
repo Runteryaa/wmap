@@ -60,13 +60,26 @@ public class MapColorExtractor {
                 
                 MapColor mapColor = MapColor.NONE;
                 BlockState state = chunk.getBlockState(pos);
-                while (pos.getY() > chunk.getMinY()) {
-                    state = chunk.getBlockState(pos);
+                boolean fixedNetherSlice = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
+                    chunk.getLevel().dimension().identifier().toString());
+                if (fixedNetherSlice) {
+                    // Cave maps are horizontal slices. Do not scan down from
+                    // this level: that turns a mid-level view into another
+                    // surface search and can select blocks at the Nether floor.
                     mapColor = state.getMapColor(chunk.getLevel(), pos);
-                    if (mapColor != MapColor.NONE && !(netherMidLevel && state.is(net.minecraft.world.level.block.Blocks.BEDROCK))) {
-                        break;
+                    if (state.isAir() || state.is(net.minecraft.world.level.block.Blocks.BEDROCK)) {
+                        colors[z * 16 + x] = 0;
+                        continue;
                     }
-                    pos.move(0, -1, 0);
+                } else {
+                    while (pos.getY() > chunk.getMinY()) {
+                        state = chunk.getBlockState(pos);
+                        mapColor = state.getMapColor(chunk.getLevel(), pos);
+                        if (mapColor != MapColor.NONE) {
+                            break;
+                        }
+                        pos.move(0, -1, 0);
+                    }
                 }
 
                 MapColor.Brightness brightness = MapColor.Brightness.NORMAL;
@@ -111,7 +124,7 @@ public class MapColorExtractor {
                     argb = applyBrightness(tint, renderedBrightness);
                 }
 
-                if (isWater || isLava) {
+                if ((isWater || isLava) && !fixedNetherSlice) {
                     // Count the contiguous fluid column, so both source and
                     // flowing lava receive consistent depth shading.
                     int depth = getFluidDepth(chunk, pos, isLava);
