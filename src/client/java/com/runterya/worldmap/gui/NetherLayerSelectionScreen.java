@@ -8,7 +8,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Lets the player choose the surface view or a saved vertical cave layer. */
+/** Lets the player choose the surface view or a saved vertical layered view. */
 public final class NetherLayerSelectionScreen extends Screen {
     private static final int COLUMNS = 5;
     private static final int CELL_HEIGHT = 24;
@@ -18,7 +18,7 @@ public final class NetherLayerSelectionScreen extends Screen {
     private final String selectedDimension;
 
     public NetherLayerSelectionScreen(Screen parent, int minY, int maxY, String selectedDimension) {
-        super(Component.literal("Cave Map Layer"));
+        super(Component.literal("Layered Map View"));
         this.parent = parent;
         this.minY = minY;
         this.maxY = maxY;
@@ -103,8 +103,8 @@ public final class NetherLayerSelectionScreen extends Screen {
 
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xE0181A20);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF777777);
-        graphics.centeredText(this.font, "Cave Map Layer", this.width / 2, panelTop + 10, 0xFFFFFFFF);
-        graphics.centeredText(this.font, "Choose bedrock top or any 8-block cave layer",
+        graphics.centeredText(this.font, "Layered Map View", this.width / 2, panelTop + 10, 0xFFFFFFFF);
+        graphics.centeredText(this.font, "Choose bedrock top or any 8-block layer",
             this.width / 2, panelTop + 29, 0xFFB8B8B8);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }

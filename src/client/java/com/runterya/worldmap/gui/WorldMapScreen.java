@@ -325,10 +325,10 @@ public class WorldMapScreen extends Screen {
     }
 
     private static Component netherViewLabel(String dimension) {
-        String prefix = NetherMapView.NETHER_DIMENSION.equals(dimension) ? "Nether" : "Cave";
+        String prefix = NetherMapView.NETHER_DIMENSION.equals(dimension) ? "Nether" : "Layered";
         if (WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE) {
             return Component.literal(NetherMapView.NETHER_DIMENSION.equals(dimension)
-                ? "Nether: Bedrock top" : "Cave: Surface");
+                ? "Nether: Bedrock top" : "Layered: Surface");
         }
         Minecraft minecraft = Minecraft.getInstance();
         boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
