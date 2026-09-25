@@ -74,12 +74,6 @@ public class WorldMapScreen extends Screen {
                 this.minecraft, new WorldMapConfigScreen(this)
             )
         ).bounds(8, this.height - 28, 100, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Layers"), button ->
-            com.runterya.worldmap.client.ClientPlatform.setScreen(
-                this.minecraft, new MapLayersScreen(this)
-            )
-        ).bounds(114, this.height - 28, 80, 20).build());
-
         this.waypointSearchField = new EditBox(this.font,
             Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8), 8,
             Math.min(190, this.width - 110), 20,

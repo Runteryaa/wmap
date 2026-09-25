@@ -18,7 +18,7 @@ import java.util.UUID;
 
 public final class WorldMapConfigScreen extends Screen {
     private static final int PANEL_WIDTH = 420;
-    private static final int PANEL_HEIGHT = 292;
+    private static final int PANEL_HEIGHT = 376;
     private static final int PLAYER_PICKER_WIDTH = 280;
     private static final int PLAYER_PICKER_HEIGHT = 220;
     private static final int PLAYER_PICKER_ROW_HEIGHT = 22;
@@ -62,9 +62,19 @@ public final class WorldMapConfigScreen extends Screen {
             this.playerPickerOpen = true;
         }).bounds(buttonLeft, panelTop + 216, buttonWidth, 22).build());
 
+        this.addRenderableWidget(Button.builder(playersLabel(), button -> {
+            WorldMapConfig.toggleShowPlayers();
+            button.setMessage(playersLabel());
+        }).bounds(buttonLeft, panelTop + 286, buttonWidth, 22).build());
+
+        this.addRenderableWidget(Button.builder(waypointsLabel(), button -> {
+            WorldMapConfig.toggleShowWaypoints();
+            button.setMessage(waypointsLabel());
+        }).bounds(buttonLeft, panelTop + 312, buttonWidth, 22).build());
+
         this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
-        ).bounds(this.width / 2 - 100, panelTop + 252, 200, 22).build());
+        ).bounds(this.width / 2 - 100, panelTop + 344, 200, 22).build());
     }
 
     @Override
@@ -86,6 +96,9 @@ public final class WorldMapConfigScreen extends Screen {
         graphics.text(this.font, "Shared map", panelLeft + 18, panelTop + 132, 0xFFFFFFFF, true);
         graphics.text(this.font, "Choose which discovered chunks appear on the shared map.",
             panelLeft + 18, panelTop + 147, 0xFFB8B8B8, true);
+        graphics.text(this.font, "Layers", panelLeft + 18, panelTop + 252, 0xFFFFFFFF, true);
+        graphics.text(this.font, "Choose which markers are visible on the map.",
+            panelLeft + 18, panelTop + 267, 0xFFB8B8B8, true);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         if (this.playerPickerOpen) drawPlayerPicker(graphics, mouseX, mouseY);
@@ -192,6 +205,18 @@ public final class WorldMapConfigScreen extends Screen {
     private static Component explorerSelectLabel() {
         String name = WorldMapConfig.selectedExplorerName();
         return Component.literal(name.isBlank() ? "Choose player to filter by" : "Choose player: " + name);
+    }
+
+    private static Component playersLabel() {
+        return visibilityLabel("Players", WorldMapConfig.showPlayers());
+    }
+
+    private static Component waypointsLabel() {
+        return visibilityLabel("Waypoints", WorldMapConfig.showWaypoints());
+    }
+
+    private static Component visibilityLabel(String name, boolean visible) {
+        return Component.literal(name + ": " + (visible ? "Shown" : "Hidden"));
     }
 
     @Override
