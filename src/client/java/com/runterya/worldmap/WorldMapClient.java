@@ -51,7 +51,7 @@ public class WorldMapClient implements ClientModInitializer {
             if (mapKeyBinding != null) {
                 while (mapKeyBinding.consumeClick()) {
                     if (client.player != null) {
-                        if (client.screen instanceof com.runterya.worldmap.gui.WorldMapScreen) {
+                        if (ClientPlatform.isScreen(client, com.runterya.worldmap.gui.WorldMapScreen.class)) {
                             ClientPlatform.setScreen(client, null);
                         } else {
                             ClientPlatform.setScreen(client, new com.runterya.worldmap.gui.WorldMapScreen());

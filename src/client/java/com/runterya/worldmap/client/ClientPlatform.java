@@ -79,8 +79,42 @@ public final class ClientPlatform {
         }
     }
 
+    public static boolean isScreen(Minecraft minecraft, Class<? extends Screen> screenType) {
+        try {
+            Object currentScreen;
+            String minecraftName = "net.minecraft.client.Minecraft";
+            String screenDescriptor = "Lnet/minecraft/client/gui/screens/Screen;";
+            try {
+                Field screenField = mappedField(minecraft.getClass(), minecraftName, "screen", screenDescriptor);
+                currentScreen = screenField.get(minecraft);
+            } catch (NoSuchFieldException ignored) {
+                String guiName = "net.minecraft.client.gui.Gui";
+                String guiDescriptor = "Lnet/minecraft/client/gui/Gui;";
+                Field guiField = mappedField(minecraft.getClass(), minecraftName, "gui", guiDescriptor);
+                Object gui = guiField.get(minecraft);
+                Field screenField = mappedField(gui.getClass(), guiName, "screen", screenDescriptor);
+                currentScreen = screenField.get(gui);
+            }
+            return screenType.isInstance(currentScreen);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Could not inspect the current screen for this Minecraft version", e);
+        }
+    }
+
     private static Class<?> mappedClass(String officialName) throws ClassNotFoundException {
         return Class.forName(MAPPINGS.mapClassName(SOURCE_NAMESPACE, officialName));
+    }
+
+    private static Field mappedField(Class<?> runtimeOwner, String officialOwner, String name, String descriptor)
+        throws NoSuchFieldException {
+        String runtimeName = MAPPINGS.mapFieldName(SOURCE_NAMESPACE, officialOwner, name, descriptor);
+        try {
+            return runtimeOwner.getField(runtimeName);
+        } catch (NoSuchFieldException ignored) {
+            Field field = runtimeOwner.getDeclaredField(runtimeName);
+            field.setAccessible(true);
+            return field;
+        }
     }
 
     private static String mappedMethod(String owner, String name, String descriptor) {
