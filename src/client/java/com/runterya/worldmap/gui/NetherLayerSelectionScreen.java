@@ -32,7 +32,7 @@ public final class NetherLayerSelectionScreen extends Screen {
         int maxLayerY = NetherMapView.getPlayerLayerY(
             minecraft.level.getMaxY() - 1, minecraft.level.getMinY(), minecraft.level.getMaxY());
         int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
-        int itemCount = layerCount + 1;
+        int itemCount = layerCount + 2;
         int rows = (itemCount + COLUMNS - 1) / COLUMNS;
 
         int panelWidth = Math.min(470, this.width - 24);
@@ -50,13 +50,21 @@ public final class NetherLayerSelectionScreen extends Screen {
             ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(gridLeft, gridTop, cellWidth, 20).build());
 
+        boolean autoSelected = WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER
+            && WorldMapConfig.isNetherLayerAuto();
+        this.addRenderableWidget(Button.builder(Component.literal(autoSelected ? "✓ Auto" : "Auto"), button -> {
+            WorldMapConfig.selectNetherAutoLayer();
+            ClientPlatform.setScreen(this.minecraft, this.parent);
+        }).bounds(gridLeft + cellWidth + cellGap, gridTop, cellWidth, 20).build());
+
         int selectedLayerY = WorldMapConfig.selectedNetherLayerY(
             minecraft.level.getMinY(), minecraft.level.getMaxY(), minecraft.player.blockPosition().getY());
         for (int layerY = minLayerY; layerY <= maxLayerY; layerY += NetherMapView.CAVE_LAYER_STEP) {
-            int index = 1 + (layerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP;
+            int index = 2 + (layerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP;
             int column = index % COLUMNS;
             int row = index / COLUMNS;
-            String label = (WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER && layerY == selectedLayerY
+            String label = (WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER
+                && !WorldMapConfig.isNetherLayerAuto() && layerY == selectedLayerY
                 ? "✓ Y " : "Y ") + layerY;
             int selectedY = layerY;
             this.addRenderableWidget(Button.builder(Component.literal(label), button -> {
@@ -79,7 +87,8 @@ public final class NetherLayerSelectionScreen extends Screen {
             Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
         int maxLayerY = NetherMapView.getPlayerLayerY(
             Minecraft.getInstance().level.getMaxY() - 1, Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
-        int rows = ((maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1 + COLUMNS) / COLUMNS;
+        int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
+        int rows = (layerCount + 2 + COLUMNS - 1) / COLUMNS;
         int panelHeight = 64 + rows * CELL_HEIGHT + 34;
         int panelLeft = (this.width - panelWidth) / 2;
         int panelTop = Math.max(8, (this.height - panelHeight) / 2);

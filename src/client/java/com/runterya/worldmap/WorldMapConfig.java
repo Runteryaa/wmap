@@ -29,6 +29,7 @@ public final class WorldMapConfig {
     private static boolean showExploredAreas = true;
     private static NetherMapView netherMapView = NetherMapView.BEDROCK_SURFACE;
     private static int selectedNetherLayerY = Integer.MIN_VALUE;
+    private static boolean autoNetherLayer = true;
 
     private WorldMapConfig() {}
 
@@ -81,6 +82,12 @@ public final class WorldMapConfig {
                 } catch (NumberFormatException ignored) {
                     selectedNetherLayerY = Integer.MIN_VALUE;
                 }
+            }
+            if (config.has("autoNetherLayer") && config.get("autoNetherLayer").isJsonPrimitive()) {
+                autoNetherLayer = config.get("autoNetherLayer").getAsBoolean();
+            } else {
+                // Older configs followed the player until a specific Y layer was selected.
+                autoNetherLayer = selectedNetherLayerY == Integer.MIN_VALUE;
             }
         } catch (Exception exception) {
             WorldMapMod.LOGGER.warn("Could not read worldmap.json; using default client settings", exception);
@@ -159,12 +166,25 @@ public final class WorldMapConfig {
     }
 
     public static int selectedNetherLayerY(int minY, int maxY, int playerY) {
-        int requestedY = selectedNetherLayerY == Integer.MIN_VALUE ? playerY : selectedNetherLayerY;
+        int requestedY = autoNetherLayer || selectedNetherLayerY == Integer.MIN_VALUE
+            ? playerY : selectedNetherLayerY;
         return NetherMapView.getPlayerLayerY(requestedY, minY, maxY);
+    }
+
+    public static boolean isNetherLayerAuto() {
+        return autoNetherLayer;
+    }
+
+    public static void selectNetherAutoLayer() {
+        autoNetherLayer = true;
+        netherMapView = NetherMapView.CAVE_LAYER;
+        save();
+        com.runterya.worldmap.client.ClientMapManager.queueLoadedChunks();
     }
 
     public static void selectNetherCaveLayer(int layerY) {
         selectedNetherLayerY = layerY;
+        autoNetherLayer = false;
         netherMapView = NetherMapView.CAVE_LAYER;
         save();
         com.runterya.worldmap.client.ClientMapManager.queueLoadedChunks();
@@ -193,6 +213,7 @@ public final class WorldMapConfig {
             config.addProperty("showWaypoints", showWaypoints);
             config.addProperty("showExploredAreas", showExploredAreas);
             config.addProperty("netherMapView", netherMapView.name());
+            config.addProperty("autoNetherLayer", autoNetherLayer);
             if (selectedNetherLayerY != Integer.MIN_VALUE) {
                 config.addProperty("selectedNetherLayerY", selectedNetherLayerY);
             }
