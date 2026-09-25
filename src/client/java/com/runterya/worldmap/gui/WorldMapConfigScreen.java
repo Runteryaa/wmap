@@ -23,11 +23,18 @@ public final class WorldMapConfigScreen extends Screen {
     private static final int PLAYER_PICKER_HEIGHT = 220;
     private static final int PLAYER_PICKER_ROW_HEIGHT = 22;
     private static final int PLAYER_PICKER_VISIBLE_ROWS = 6;
+    private static final int SETTINGS_CONTENT_BOTTOM = 334;
     private final Screen parent;
     private Button explorationFilterButton;
     private Button explorerSelectButton;
+    private Button waypointActionButton;
+    private Button exploredAreasButton;
+    private Button playersButton;
+    private Button waypointsButton;
+    private Button doneButton;
     private boolean playerPickerOpen;
     private int playerPickerScroll;
+    private int settingsScroll;
 
     public WorldMapConfigScreen(Screen parent) {
         super(Component.literal("WorldMap Settings"));
@@ -38,43 +45,44 @@ public final class WorldMapConfigScreen extends Screen {
     protected void init() {
         int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
         int panelLeft = (this.width - panelWidth) / 2;
-        int panelTop = Math.max(12, (this.height - PANEL_HEIGHT) / 2);
+        int panelHeight = panelHeight();
+        int panelTop = (this.height - panelHeight) / 2;
         int buttonLeft = panelLeft + 18;
         int buttonWidth = panelWidth - 36;
 
-        this.addRenderableWidget(Button.builder(toggleLabel(), button -> {
+        this.waypointActionButton = this.addRenderableWidget(Button.builder(toggleLabel(), button -> {
             WorldMapConfig.setOpenWaypointActionsOnLook(!WorldMapConfig.openWaypointActionsOnLook());
             button.setMessage(toggleLabel());
-        }).bounds(buttonLeft, panelTop + 94, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 94 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.addRenderableWidget(Button.builder(exploredAreasLabel(), button -> {
+        this.exploredAreasButton = this.addRenderableWidget(Button.builder(exploredAreasLabel(), button -> {
             WorldMapConfig.toggleShowExploredAreas();
             button.setMessage(exploredAreasLabel());
-        }).bounds(buttonLeft, panelTop + 164, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 164 - this.settingsScroll, buttonWidth, 22).build());
 
         this.explorationFilterButton = this.addRenderableWidget(Button.builder(explorationFilterLabel(), button -> {
             WorldMapConfig.cycleMapLayer();
             button.setMessage(explorationFilterLabel());
-        }).bounds(buttonLeft, panelTop + 190, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 190 - this.settingsScroll, buttonWidth, 22).build());
 
         this.explorerSelectButton = this.addRenderableWidget(Button.builder(explorerSelectLabel(), button -> {
             this.playerPickerScroll = 0;
             this.playerPickerOpen = true;
-        }).bounds(buttonLeft, panelTop + 216, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 216 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.addRenderableWidget(Button.builder(playersLabel(), button -> {
+        this.playersButton = this.addRenderableWidget(Button.builder(playersLabel(), button -> {
             WorldMapConfig.toggleShowPlayers();
             button.setMessage(playersLabel());
-        }).bounds(buttonLeft, panelTop + 286, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 286 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.addRenderableWidget(Button.builder(waypointsLabel(), button -> {
+        this.waypointsButton = this.addRenderableWidget(Button.builder(waypointsLabel(), button -> {
             WorldMapConfig.toggleShowWaypoints();
             button.setMessage(waypointsLabel());
-        }).bounds(buttonLeft, panelTop + 312, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 312 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
+        this.doneButton = this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
-        ).bounds(this.width / 2 - 100, panelTop + 344, 200, 22).build());
+        ).bounds(this.width / 2 - 100, panelTop + panelHeight - 32, 200, 22).build());
     }
 
     @Override
@@ -82,26 +90,67 @@ public final class WorldMapConfigScreen extends Screen {
                                    int mouseX, int mouseY, float partialTick) {
         int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
         int panelLeft = (this.width - panelWidth) / 2;
-        int panelTop = Math.max(12, (this.height - PANEL_HEIGHT) / 2);
-        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + PANEL_HEIGHT, 0xE0181A20);
-        graphics.outline(panelLeft, panelTop, panelWidth, PANEL_HEIGHT, 0xFF777777);
+        int panelHeight = panelHeight();
+        int panelTop = (this.height - panelHeight) / 2;
+        graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xE0181A20);
+        graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF777777);
         graphics.centeredText(this.font, "WorldMap Settings", this.width / 2, panelTop + 12, 0xFFFFFFFF);
         graphics.centeredText(this.font, "Customize map controls and shared exploration",
             this.width / 2, panelTop + 31, 0xFFB8B8B8);
         graphics.fill(panelLeft + 16, panelTop + 52, panelLeft + panelWidth - 16, panelTop + 53, 0xFF55555F);
 
-        graphics.text(this.font, "Controls", panelLeft + 18, panelTop + 63, 0xFFFFFFFF, true);
+        int contentTop = panelTop + 52;
+        int contentBottom = panelTop + panelHeight - 40;
+        graphics.enableScissor(panelLeft + 8, contentTop, panelLeft + panelWidth - 8, contentBottom);
+        int offset = this.settingsScroll;
+        graphics.text(this.font, "Controls", panelLeft + 18, panelTop + 63 - offset, 0xFFFFFFFF, true);
         graphics.text(this.font, "Choose what B does while you look at a waypoint.",
-            panelLeft + 18, panelTop + 78, 0xFFB8B8B8, true);
-        graphics.text(this.font, "Shared map", panelLeft + 18, panelTop + 132, 0xFFFFFFFF, true);
+            panelLeft + 18, panelTop + 78 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, "Shared map", panelLeft + 18, panelTop + 132 - offset, 0xFFFFFFFF, true);
         graphics.text(this.font, "Choose which discovered chunks appear on the shared map.",
-            panelLeft + 18, panelTop + 147, 0xFFB8B8B8, true);
-        graphics.text(this.font, "Layers", panelLeft + 18, panelTop + 252, 0xFFFFFFFF, true);
+            panelLeft + 18, panelTop + 147 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, "Layers", panelLeft + 18, panelTop + 252 - offset, 0xFFFFFFFF, true);
         graphics.text(this.font, "Choose which markers are visible on the map.",
-            panelLeft + 18, panelTop + 267, 0xFFB8B8B8, true);
-
+            panelLeft + 18, panelTop + 267 - offset, 0xFFB8B8B8, true);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        graphics.disableScissor();
+        this.doneButton.extractRenderState(graphics, mouseX, mouseY, partialTick);
         if (this.playerPickerOpen) drawPlayerPicker(graphics, mouseX, mouseY);
+    }
+
+    private int panelHeight() {
+        return Math.min(PANEL_HEIGHT, Math.max(200, this.height - 16));
+    }
+
+    private int maxSettingsScroll() {
+        return Math.max(0, SETTINGS_CONTENT_BOTTOM - (panelHeight() - 40));
+    }
+
+    private void updateScrolledWidgetPositions() {
+        int panelTop = (this.height - panelHeight()) / 2;
+        int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
+        int panelLeft = (this.width - panelWidth) / 2;
+        int buttonLeft = panelLeft + 18;
+        int buttonWidth = panelWidth - 36;
+        this.waypointActionButton.setY(panelTop + 94 - this.settingsScroll);
+        this.exploredAreasButton.setY(panelTop + 164 - this.settingsScroll);
+        this.explorationFilterButton.setY(panelTop + 190 - this.settingsScroll);
+        this.explorerSelectButton.setY(panelTop + 216 - this.settingsScroll);
+        this.playersButton.setY(panelTop + 286 - this.settingsScroll);
+        this.waypointsButton.setY(panelTop + 312 - this.settingsScroll);
+        this.doneButton.setY(panelTop + panelHeight() - 32);
+        this.waypointActionButton.setX(buttonLeft);
+        this.exploredAreasButton.setX(buttonLeft);
+        this.explorationFilterButton.setX(buttonLeft);
+        this.explorerSelectButton.setX(buttonLeft);
+        this.playersButton.setX(buttonLeft);
+        this.waypointsButton.setX(buttonLeft);
+        this.waypointActionButton.setWidth(buttonWidth);
+        this.exploredAreasButton.setWidth(buttonWidth);
+        this.explorationFilterButton.setWidth(buttonWidth);
+        this.explorerSelectButton.setWidth(buttonWidth);
+        this.playersButton.setWidth(buttonWidth);
+        this.waypointsButton.setWidth(buttonWidth);
     }
 
     private List<PlayerPosPayload.PlayerPos> availableMapPlayers() {
@@ -222,6 +271,15 @@ public final class WorldMapConfigScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
         if (this.playerPickerOpen) return handlePlayerPickerClick(event);
+        int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
+        int panelLeft = (this.width - panelWidth) / 2;
+        int panelTop = (this.height - panelHeight()) / 2;
+        int bodyTop = panelTop + 52;
+        int bodyBottom = panelTop + panelHeight() - 40;
+        boolean insideDone = event.x() >= this.doneButton.getX() && event.x() < this.doneButton.getX() + this.doneButton.getWidth()
+            && event.y() >= this.doneButton.getY() && event.y() < this.doneButton.getY() + this.doneButton.getHeight();
+        if (event.x() >= panelLeft && event.x() < panelLeft + panelWidth
+            && (event.y() < bodyTop || event.y() >= bodyBottom) && !insideDone) return true;
         return super.mouseClicked(event, isDouble);
     }
 
@@ -238,10 +296,21 @@ public final class WorldMapConfigScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (!this.playerPickerOpen) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-        int maxScroll = Math.max(0, availableMapPlayers().size() - PLAYER_PICKER_VISIBLE_ROWS);
-        this.playerPickerScroll = Math.max(0, Math.min(maxScroll,
-            this.playerPickerScroll - (int) Math.signum(scrollY)));
+        if (this.playerPickerOpen) {
+            int maxScroll = Math.max(0, availableMapPlayers().size() - PLAYER_PICKER_VISIBLE_ROWS);
+            this.playerPickerScroll = Math.max(0, Math.min(maxScroll,
+                this.playerPickerScroll - (int) Math.signum(scrollY)));
+            return true;
+        }
+        int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
+        int panelLeft = (this.width - panelWidth) / 2;
+        int panelTop = (this.height - panelHeight()) / 2;
+        int bodyBottom = panelTop + panelHeight() - 40;
+        if (mouseX < panelLeft || mouseX >= panelLeft + panelWidth
+            || mouseY < panelTop + 52 || mouseY >= bodyBottom) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        this.settingsScroll = Math.max(0, Math.min(maxSettingsScroll(),
+            this.settingsScroll - (int) Math.signum(scrollY) * 18));
+        updateScrolledWidgetPositions();
         return true;
     }
 
