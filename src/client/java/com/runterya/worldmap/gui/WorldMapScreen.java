@@ -856,9 +856,16 @@ public class WorldMapScreen extends Screen {
     }
 
     private static int colorForPlayer(UUID uuid) {
-        long mixed = uuid.getMostSignificantBits() ^ Long.rotateLeft(uuid.getLeastSignificantBits(), 23);
-        float hue = (float) ((mixed >>> 40 & 0xFFFFFFL) / 16777216.0);
-        return java.awt.Color.HSBtoRGB(hue, 0.82f, 1.0f) | 0xFF000000;
+        // Match Minecraft's default Locator Bar color: Java's UUID hash folded to
+        // 24-bit RGB, then normalized to 90% HSV brightness.
+        int rgb = uuid.hashCode() & 0x00FFFFFF;
+        float[] hsb = java.awt.Color.RGBtoHSB(
+            (rgb >>> 16) & 0xFF,
+            (rgb >>> 8) & 0xFF,
+            rgb & 0xFF,
+            null
+        );
+        return java.awt.Color.HSBtoRGB(hsb[0], hsb[1], 0.9f) | 0xFF000000;
     }
 
     @Override
