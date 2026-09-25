@@ -712,13 +712,30 @@ public class WorldMapScreen extends Screen {
         if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
+            String dim = Minecraft.getInstance().level != null
+                ? Minecraft.getInstance().level.dimension().identifier().toString()
+                : "minecraft:overworld";
+
+            // Player markers are drawn above waypoints, so give them right-click priority too.
+            if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null) {
+                UUID localPlayerId = Minecraft.getInstance().player.getUUID();
+                for (var player : getPlayersInDimension(dim)) {
+                    if (player.uuid().equals(localPlayerId)) continue;
+                    double[] marker = playerMarkerPosition(player, centerX, centerY);
+                    if (isNearMarker(event.x(), event.y(), marker[0], marker[1])) {
+                        com.runterya.worldmap.client.ClientPlatform.setScreen(
+                            Minecraft.getInstance(), new PlayerContextMenuScreen(this, player)
+                        );
+                        return true;
+                    }
+                }
+            }
             
             // Convert screen coordinates to world coordinates
             double worldX = (event.x() - centerX) / this.scale - this.panX;
             double worldZ = (event.y() - centerY) / this.scale - this.panY;
             
             int color = 0xFF000000 | new java.util.Random().nextInt(0xFFFFFF);
-            String dim = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.dimension().identifier().toString() : "unknown";
             
             // We use integer block coordinates, Y is estimated or set to 64
             int blockX = (int) Math.round(worldX);
