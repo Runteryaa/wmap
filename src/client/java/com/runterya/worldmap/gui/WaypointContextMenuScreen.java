@@ -21,26 +21,31 @@ public class WaypointContextMenuScreen extends Screen {
     protected void init() {
         int centerX = this.width / 2;
         int top = this.height / 2 - 42;
-        this.addRenderableWidget(Button.builder(Component.literal("Teleport there"), button -> {
-            Minecraft minecraft = this.minecraft;
-            if (minecraft != null && minecraft.player != null) {
-                minecraft.player.connection.sendCommand("tp @s " + (this.waypoint.getX() + 0.5) + " "
-                    + this.waypoint.getY() + " " + (this.waypoint.getZ() + 0.5));
-                com.runterya.worldmap.client.ClientPlatform.setScreen(minecraft, null);
-            }
-        }).bounds(centerX - 100, top, 200, 20).build());
+        Minecraft minecraft = this.minecraft;
+        boolean canTeleport = TeleportPermissions.canTeleport(minecraft);
+        if (canTeleport) {
+            this.addRenderableWidget(Button.builder(Component.literal("Teleport there"), button -> {
+                Minecraft currentMinecraft = this.minecraft;
+                if (TeleportPermissions.canTeleport(currentMinecraft)) {
+                    currentMinecraft.player.connection.sendCommand("tp @s " + (this.waypoint.getX() + 0.5) + " "
+                        + this.waypoint.getY() + " " + (this.waypoint.getZ() + 0.5));
+                    com.runterya.worldmap.client.ClientPlatform.setScreen(currentMinecraft, null);
+                }
+            }).bounds(centerX - 100, top, 200, 20).build());
+        }
+        int actionTop = canTeleport ? top + 24 : top;
         this.addRenderableWidget(Button.builder(Component.literal("Edit"), button -> {
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, new WaypointAddScreen(this.parent, this.waypoint));
-        }).bounds(centerX - 100, top + 24, 200, 20).build());
+        }).bounds(centerX - 100, actionTop, 200, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Remove"), button -> {
             WaypointManager.removeWaypoint(this.waypoint);
             if (this.minecraft.player != null) {
                 this.minecraft.player.sendSystemMessage(Component.literal("Waypoint removed!"));
             }
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
-        }).bounds(centerX - 100, top + 48, 200, 20).build());
+        }).bounds(centerX - 100, actionTop + 24, 200, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Back"), button -> com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent))
-            .bounds(centerX - 100, top + 72, 200, 20).build());
+            .bounds(centerX - 100, actionTop + 48, 200, 20).build());
     }
 
     @Override
