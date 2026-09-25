@@ -13,24 +13,28 @@ public final class NetherLayerSelectionScreen extends Screen {
     private static final int COLUMNS = 5;
     private static final int CELL_HEIGHT = 24;
     private final Screen parent;
+    private final int minY;
+    private final int maxY;
 
-    public NetherLayerSelectionScreen(Screen parent) {
+    public NetherLayerSelectionScreen(Screen parent, int minY, int maxY) {
         super(Component.literal("Nether Map Layer"));
         this.parent = parent;
+        this.minY = minY;
+        this.maxY = maxY;
     }
 
     @Override
     protected void init() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null || minecraft.player == null) {
+        if (minecraft.player == null) {
             ClientPlatform.setScreen(minecraft, this.parent);
             return;
         }
 
         int minLayerY = NetherMapView.getPlayerLayerY(
-            minecraft.level.getMinY(), minecraft.level.getMinY(), minecraft.level.getMaxY());
+            this.minY, this.minY, this.maxY);
         int maxLayerY = NetherMapView.getPlayerLayerY(
-            minecraft.level.getMaxY() - 1, minecraft.level.getMinY(), minecraft.level.getMaxY());
+            this.maxY - 1, this.minY, this.maxY);
         int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
         int itemCount = layerCount + 2;
         int rows = (itemCount + COLUMNS - 1) / COLUMNS;
@@ -58,7 +62,9 @@ public final class NetherLayerSelectionScreen extends Screen {
         }).bounds(gridLeft + cellWidth + cellGap, gridTop, cellWidth, 20).build());
 
         int selectedLayerY = WorldMapConfig.selectedNetherLayerY(
-            minecraft.level.getMinY(), minecraft.level.getMaxY(), minecraft.player.blockPosition().getY());
+            this.minY, this.maxY, minecraft.level != null
+                && minecraft.level.dimension().identifier().toString().equals(NetherMapView.NETHER_DIMENSION)
+                ? minecraft.player.blockPosition().getY() : 40);
         for (int layerY = minLayerY; layerY <= maxLayerY; layerY += NetherMapView.CAVE_LAYER_STEP) {
             int index = 2 + (layerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP;
             int column = index % COLUMNS;
@@ -84,9 +90,9 @@ public final class NetherLayerSelectionScreen extends Screen {
                                    int mouseX, int mouseY, float partialTick) {
         int panelWidth = Math.min(470, this.width - 24);
         int minLayerY = NetherMapView.getPlayerLayerY(
-            Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
+            this.minY, this.minY, this.maxY);
         int maxLayerY = NetherMapView.getPlayerLayerY(
-            Minecraft.getInstance().level.getMaxY() - 1, Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY());
+            this.maxY - 1, this.minY, this.maxY);
         int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
         int rows = (layerCount + 2 + COLUMNS - 1) / COLUMNS;
         int panelHeight = 64 + rows * CELL_HEIGHT + 34;

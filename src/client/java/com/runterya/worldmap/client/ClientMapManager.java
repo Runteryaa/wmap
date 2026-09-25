@@ -258,6 +258,12 @@ public class ClientMapManager {
         return otherPlayers;
     }
 
+    public static Set<String> getKnownDimensions() {
+        Set<String> dimensions = new java.util.LinkedHashSet<>(regionsByDimension.keySet());
+        for (PlayerPos player : otherPlayers) dimensions.add(player.dimension());
+        return Set.copyOf(dimensions);
+    }
+
     public static Map<ChunkPos, RegionTexture> getRegions(String dimension) {
         return regionsByDimension.getOrDefault(dimension, Collections.emptyMap());
     }

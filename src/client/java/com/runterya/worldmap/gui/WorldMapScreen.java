@@ -4,6 +4,7 @@ import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.backend.NetherMapView;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -52,6 +53,10 @@ public class WorldMapScreen extends Screen {
     ) {}
     private Button itemSearchButton;
     private Button netherViewButton;
+    private Button dimensionButton;
+    private String selectedDimension;
+    private boolean dimensionPickerOpen;
+    private int dimensionPickerOffset;
     private boolean itemPickerOpen;
     private String itemPickerSearch = "";
     private int itemPickerScrollRow;
@@ -67,6 +72,11 @@ public class WorldMapScreen extends Screen {
             this.panX = -Minecraft.getInstance().player.getX();
             this.panY = -Minecraft.getInstance().player.getZ();
         }
+        if (Minecraft.getInstance().level != null) {
+            this.selectedDimension = Minecraft.getInstance().level.dimension().identifier().toString();
+        } else {
+            this.selectedDimension = "minecraft:overworld";
+        }
     }
 
     @Override
@@ -76,14 +86,21 @@ public class WorldMapScreen extends Screen {
                 this.minecraft, new WorldMapConfigScreen(this)
             )
         ).bounds(8, this.height - 28, 100, 20).build());
-        if (Minecraft.getInstance().level != null
-            && NetherMapView.NETHER_DIMENSION.equals(Minecraft.getInstance().level.dimension().identifier().toString())) {
-            this.netherViewButton = this.addRenderableWidget(Button.builder(netherViewLabel(), button -> {
-                com.runterya.worldmap.client.ClientPlatform.setScreen(
-                    this.minecraft, new NetherLayerSelectionScreen(this)
-                );
-            }).bounds(112, this.height - 28, 150, 20).build());
-        }
+        this.netherViewButton = this.addRenderableWidget(Button.builder(netherViewLabel(activeDimension()), button -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            boolean playerInNether = minecraft.level != null && minecraft.player != null
+                && minecraft.level.dimension().identifier().toString().equals(activeDimension());
+            int minY = playerInNether ? minecraft.level.getMinY() : -64;
+            int maxY = playerInNether ? minecraft.level.getMaxY() : 256;
+            com.runterya.worldmap.client.ClientPlatform.setScreen(
+                this.minecraft, new NetherLayerSelectionScreen(this, minY, maxY)
+            );
+        }).bounds(112, this.height - 28, 150, 20).build());
+        this.dimensionButton = this.addRenderableWidget(Button.builder(dimensionButtonLabel(), button -> {
+            this.itemPickerOpen = false;
+            this.dimensionPickerOpen = !this.dimensionPickerOpen;
+            this.dimensionPickerOffset = 0;
+        }).bounds(Math.max(8, this.width - 190), this.height - 28, 182, 20).build());
         this.waypointSearchField = new EditBox(this.font,
             Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8), 8,
             Math.min(190, this.width - 110), 20,
@@ -103,10 +120,10 @@ public class WorldMapScreen extends Screen {
     public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
-        String currentDim = Minecraft.getInstance().level != null
-            ? Minecraft.getInstance().level.dimension().identifier().toString()
-            : "minecraft:overworld";
-        if (this.netherViewButton != null) this.netherViewButton.setMessage(netherViewLabel());
+        String currentDim = activeDimension();
+        if (this.netherViewButton != null) this.netherViewButton.setMessage(netherViewLabel(currentDim));
+        if (this.netherViewButton != null) this.netherViewButton.active = NetherMapView.NETHER_DIMENSION.equals(currentDim);
+        if (this.dimensionButton != null) this.dimensionButton.setMessage(dimensionButtonLabel());
 
         graphics.pose().pushMatrix();
         
@@ -184,27 +201,142 @@ public class WorldMapScreen extends Screen {
 
         drawWaypointSearchResults(graphics, mouseX, mouseY, currentDim);
         if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
+        if (this.dimensionPickerOpen) drawDimensionPicker(graphics, mouseX, mouseY);
     }
 
-    private static Component netherViewLabel() {
+    private String activeDimension() {
+        return this.selectedDimension == null ? "minecraft:overworld" : this.selectedDimension;
+    }
+
+    private Component dimensionButtonLabel() {
+        return Component.literal("Dimension: " + dimensionDisplayName(activeDimension()));
+    }
+
+    private static String dimensionDisplayName(String dimension) {
+        return switch (dimension) {
+            case "minecraft:overworld" -> "Overworld";
+            case "minecraft:the_nether" -> "Nether";
+            case "minecraft:the_end" -> "End";
+            default -> dimension;
+        };
+    }
+
+    private List<String> availableDimensions() {
+        LinkedHashSet<String> dimensions = new LinkedHashSet<>(List.of(
+            "minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"
+        ));
+        dimensions.addAll(ClientMapManager.getKnownDimensions().stream()
+            .map(NetherMapView::gameDimension).toList());
+        if (Minecraft.getInstance().level != null) {
+            Minecraft minecraft = Minecraft.getInstance();
+            dimensions.add(minecraft.level.dimension().identifier().toString());
+            dimensions.addAll(minecraft.level.registryAccess().lookupOrThrow(Registries.LEVEL_STEM).keySet()
+                .stream().map(key -> key.location().toString()).toList());
+        }
+        dimensions.add(activeDimension());
+        for (var waypoint : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
+            dimensions.add(NetherMapView.gameDimension(waypoint.getDimension()));
+        }
+        dimensions.removeIf(String::isBlank);
+        List<String> ordered = new ArrayList<>(dimensions);
+        List<String> vanilla = List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
+        ordered.subList(Math.min(vanilla.size(), ordered.size()), ordered.size()).sort(String::compareTo);
+        return ordered;
+    }
+
+    private int dimensionPickerVisibleRows() {
+        return Math.min(8, Math.max(1, (this.height - 48) / 20));
+    }
+
+    private int dimensionPickerX() {
+        return Math.max(8, this.width - 208);
+    }
+
+    private int dimensionPickerY() {
+        return Math.max(8, this.height - 34 - dimensionPickerVisibleRows() * 20);
+    }
+
+    private void drawDimensionPicker(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        List<String> dimensions = availableDimensions();
+        int rows = dimensionPickerVisibleRows();
+        int x = dimensionPickerX();
+        int y = dimensionPickerY();
+        graphics.fill(x, y, x + 200, y + rows * 20 + 4, 0xE0181A20);
+        graphics.outline(x, y, 200, rows * 20 + 4, 0xFF777777);
+        for (int row = 0; row < rows; row++) {
+            int index = this.dimensionPickerOffset + row;
+            if (index >= dimensions.size()) break;
+            String dimension = dimensions.get(index);
+            int rowY = y + 2 + row * 20;
+            boolean hovered = mouseX >= x + 2 && mouseX < x + 198 && mouseY >= rowY && mouseY < rowY + 20;
+            if (dimension.equals(activeDimension())) {
+                graphics.fill(x + 2, rowY, x + 198, rowY + 20, 0xFF45454F);
+            } else if (hovered) {
+                graphics.fill(x + 2, rowY, x + 198, rowY + 20, 0xFF35353D);
+            }
+            String label = dimensionDisplayName(dimension);
+            int maxWidth = 184;
+            while (this.font.width(label) > maxWidth && label.length() > 4) {
+                label = label.substring(0, label.length() - 4) + "…";
+            }
+            graphics.text(this.font, label, x + 8, rowY + 5,
+                dimension.equals(activeDimension()) ? 0xFFFFFFFF : 0xFFCCCCCC);
+        }
+    }
+
+    private boolean handleDimensionPickerClick(MouseButtonEvent event) {
+        if (!this.dimensionPickerOpen) return false;
+        int x = dimensionPickerX();
+        int y = dimensionPickerY();
+        int rows = dimensionPickerVisibleRows();
+        boolean insidePicker = event.x() >= x && event.x() < x + 200
+            && event.y() >= y && event.y() < y + rows * 20 + 4;
+        if (!insidePicker) {
+            int buttonX = Math.max(8, this.width - 190);
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && event.x() >= buttonX
+                && event.x() < buttonX + 182 && event.y() >= this.height - 28 && event.y() < this.height - 8) {
+                return false;
+            }
+            this.dimensionPickerOpen = false;
+            return false;
+        }
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return true;
+        int row = (int) (event.y() - y - 2) / 20;
+        int index = this.dimensionPickerOffset + row;
+        List<String> dimensions = availableDimensions();
+        if (row >= 0 && row < rows && index < dimensions.size()) {
+            this.selectedDimension = dimensions.get(index);
+            this.searchScrollOffset = 0;
+        }
+        this.dimensionPickerOpen = false;
+        return true;
+    }
+
+    private static Component netherViewLabel(String dimension) {
         if (WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE) {
             return Component.literal("Nether: Bedrock top");
         }
         Minecraft minecraft = Minecraft.getInstance();
-        int layerY = minecraft.level == null || minecraft.player == null ? 40
-            : WorldMapConfig.selectedNetherLayerY(minecraft.level.getMinY(), minecraft.level.getMaxY(),
-                minecraft.player.blockPosition().getY());
+        boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
+            && minecraft.level.dimension().identifier().toString().equals(dimension);
+        int minY = playerInSelectedDimension ? minecraft.level.getMinY() : -64;
+        int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
+        int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
+        int layerY = WorldMapConfig.selectedNetherLayerY(minY, maxY, playerY);
         return Component.literal("Nether: Cave layer Y " + layerY);
     }
 
     private static String currentMapDimension(String currentDimension) {
         NetherMapView view = WorldMapConfig.netherMapView();
-        if (view == NetherMapView.CAVE_LAYER && Minecraft.getInstance().level != null
-            && Minecraft.getInstance().player != null
-            && NetherMapView.NETHER_DIMENSION.equals(currentDimension)) {
+        if (view == NetherMapView.CAVE_LAYER && NetherMapView.NETHER_DIMENSION.equals(currentDimension)) {
+            Minecraft minecraft = Minecraft.getInstance();
+            boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
+                && minecraft.level.dimension().identifier().toString().equals(currentDimension);
+            int minY = playerInSelectedDimension ? minecraft.level.getMinY() : -64;
+            int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
+            int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
             int layerY = WorldMapConfig.selectedNetherLayerY(
-                Minecraft.getInstance().level.getMinY(), Minecraft.getInstance().level.getMaxY(),
-                Minecraft.getInstance().player.blockPosition().getY());
+                minY, maxY, playerY);
             return view.storageDimension(currentDimension, layerY);
         }
         return view.storageDimension(currentDimension);
@@ -269,9 +401,7 @@ public class WorldMapScreen extends Screen {
 
     private boolean handlePlayerNameSuggestionClick(MouseButtonEvent event) {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT || this.waypointSearchField == null) return false;
-        String currentDim = Minecraft.getInstance().level != null
-            ? Minecraft.getInstance().level.dimension().identifier().toString()
-            : "minecraft:overworld";
+        String currentDim = activeDimension();
         String suggestion = getPlayerNameSuggestion(currentDim);
         if (suggestion == null) return false;
 
@@ -504,9 +634,7 @@ public class WorldMapScreen extends Screen {
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         if (!this.itemPickerOpen && event.key() == InputConstants.KEY_TAB
             && this.waypointSearchField != null && this.waypointSearchField.isFocused()) {
-            String currentDim = Minecraft.getInstance().level != null
-                ? Minecraft.getInstance().level.dimension().identifier().toString()
-                : "minecraft:overworld";
+            String currentDim = activeDimension();
             String suggestion = getPlayerNameSuggestion(currentDim);
             if (suggestion != null) {
                 this.waypointSearchField.setValue(suggestion);
@@ -545,7 +673,8 @@ public class WorldMapScreen extends Screen {
     private void drawLocalPlayerMarker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
                                        int centerX, int centerY) {
         var player = Minecraft.getInstance().player;
-        if (player == null) return;
+        if (player == null || Minecraft.getInstance().level == null
+            || !Minecraft.getInstance().level.dimension().identifier().toString().equals(activeDimension())) return;
         double playerX = centerX + (player.getX() + panX) * scale;
         double playerY = centerY + (player.getZ() + panY) * scale;
         double[] marker = markerScreenPosition(playerX, playerY, centerX, centerY);
@@ -689,6 +818,7 @@ public class WorldMapScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
         if (this.itemPickerOpen) return handleWaypointItemPickerClick(event);
+        if (handleDimensionPickerClick(event)) return true;
         if (handlePlayerNameSuggestionClick(event)) return true;
         if (handleWaypointSearchResultClick(event)) return true;
 
@@ -698,11 +828,11 @@ public class WorldMapScreen extends Screen {
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
-            String currentDim = Minecraft.getInstance().level != null
-                ? Minecraft.getInstance().level.dimension().identifier().toString()
-                : "minecraft:overworld";
+            String currentDim = activeDimension();
 
-            if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null) {
+            if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null
+                && Minecraft.getInstance().level != null
+                && Minecraft.getInstance().level.dimension().identifier().toString().equals(currentDim)) {
                 var localPlayer = Minecraft.getInstance().player;
                 double localX = centerX + (localPlayer.getX() + panX) * scale;
                 double localY = centerY + (localPlayer.getZ() + panY) * scale;
@@ -714,7 +844,7 @@ public class WorldMapScreen extends Screen {
             }
 
             if (WorldMapConfig.showPlayers()) {
-                for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
+                for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : getPlayersInDimension(currentDim)) {
                     if (Minecraft.getInstance().player != null
                         && player.uuid().equals(Minecraft.getInstance().player.getUUID())) continue;
                     double[] marker = playerMarkerPosition(player, centerX, centerY);
@@ -726,9 +856,7 @@ public class WorldMapScreen extends Screen {
             }
 
             if (WorldMapConfig.showWaypoints()) {
-                String dim = Minecraft.getInstance().level != null
-                    ? Minecraft.getInstance().level.dimension().identifier().toString()
-                    : "minecraft:overworld";
+                String dim = currentDim;
                 for (com.runterya.worldmap.client.waypoint.Waypoint wp
                     : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
                     if (!wp.getDimension().equals(dim)) continue;
@@ -751,9 +879,7 @@ public class WorldMapScreen extends Screen {
         if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             int centerX = this.width / 2;
             int centerY = this.height / 2;
-            String dim = Minecraft.getInstance().level != null
-                ? Minecraft.getInstance().level.dimension().identifier().toString()
-                : "minecraft:overworld";
+            String dim = activeDimension();
 
             // Player markers are drawn above waypoints, so give them right-click priority too.
             if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null) {
@@ -797,8 +923,9 @@ public class WorldMapScreen extends Screen {
             if (clickedWaypoint != null) {
                 com.runterya.worldmap.client.ClientPlatform.setScreen(Minecraft.getInstance(), new WaypointContextMenuScreen(this, clickedWaypoint));
             } else {
-                int blockY = 64; // Default Y
-                if (Minecraft.getInstance().player != null) {
+                int blockY = 64; // Default Y for a dimension other than the player's current one.
+                if (Minecraft.getInstance().player != null && Minecraft.getInstance().level != null
+                    && Minecraft.getInstance().level.dimension().identifier().toString().equals(dim)) {
                     blockY = Minecraft.getInstance().player.getBlockY();
                 }
                 
@@ -815,9 +942,7 @@ public class WorldMapScreen extends Screen {
             return false;
         }
 
-        String currentDim = Minecraft.getInstance().level != null
-            ? Minecraft.getInstance().level.dimension().identifier().toString()
-            : "minecraft:overworld";
+        String currentDim = activeDimension();
         List<WaypointSearchResult> results = getWaypointSearchResults(currentDim);
         int panelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
         int panelY = searchResultsPanelY(currentDim);
@@ -867,9 +992,15 @@ public class WorldMapScreen extends Screen {
             return true;
         }
 
-        String currentDim = Minecraft.getInstance().level != null
-            ? Minecraft.getInstance().level.dimension().identifier().toString()
-            : "minecraft:overworld";
+        if (this.dimensionPickerOpen && mouseX >= dimensionPickerX() && mouseX < dimensionPickerX() + 200
+            && mouseY >= dimensionPickerY() && mouseY < dimensionPickerY() + dimensionPickerVisibleRows() * 20 + 4) {
+            int maxOffset = Math.max(0, availableDimensions().size() - dimensionPickerVisibleRows());
+            this.dimensionPickerOffset = Math.max(0, Math.min(maxOffset,
+                this.dimensionPickerOffset - (int) Math.signum(scrollY)));
+            return true;
+        }
+
+        String currentDim = activeDimension();
         List<WaypointSearchResult> searchResults = getWaypointSearchResults(currentDim);
         int searchPanelX = Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8);
         int searchPanelY = searchResultsPanelY(currentDim);
