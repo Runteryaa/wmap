@@ -235,8 +235,9 @@ public class WorldMapScreen extends Screen {
         if (Minecraft.getInstance().level != null) {
             Minecraft minecraft = Minecraft.getInstance();
             dimensions.add(minecraft.level.dimension().identifier().toString());
-            dimensions.addAll(minecraft.level.registryAccess().lookupOrThrow(Registries.LEVEL_STEM).keySet()
-                .stream().map(Object::toString).toList());
+            minecraft.level.registryAccess().lookup(Registries.LEVEL_STEM).ifPresent(levelStems ->
+                dimensions.addAll(levelStems.keySet().stream().map(Object::toString).toList())
+            );
         }
         dimensions.add(activeDimension());
         for (var waypoint : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
