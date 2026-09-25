@@ -94,8 +94,6 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-
         int centerX = this.width / 2;
         int centerY = this.height / 2;
         String currentDim = Minecraft.getInstance().level != null
@@ -129,6 +127,9 @@ public class WorldMapScreen extends Screen {
         // Render waypoints (will be drawn in screen space later to prevent scaling)
 
         graphics.pose().popMatrix();
+
+        // Keep controls above the map texture, but below waypoint and player markers.
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
