@@ -2,7 +2,7 @@ package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.backend.NetherMapView;
-import com.runterya.worldmap.backend.NetherStyleDimensions;
+import com.runterya.worldmap.backend.LayeredDimensions;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -223,10 +223,7 @@ public class WorldMapScreen extends Screen {
     }
 
     private static boolean isNetherStyleDimension(String dimension) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) return NetherMapView.NETHER_DIMENSION.equals(dimension);
-        return NetherStyleDimensions.isNetherStyle(dimension,
-            minecraft.level.registryAccess().lookupOrThrow(Registries.LEVEL_STEM));
+        return LayeredDimensions.contains(dimension);
     }
 
     private List<String> availableDimensions() {

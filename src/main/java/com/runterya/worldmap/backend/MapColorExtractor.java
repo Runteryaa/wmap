@@ -59,7 +59,7 @@ public class MapColorExtractor {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
         boolean netherCaveLayer = requestedNetherScanStartY != Integer.MIN_VALUE
-            && NetherStyleDimensions.isNetherStyle(chunk.getLevel());
+            && LayeredDimensions.contains(chunk.getLevel());
         int netherScanStartY = netherCaveLayer
             ? Math.max(chunk.getMinY(), Math.min(chunk.getMaxY() - 1, requestedNetherScanStartY))
             : 0;

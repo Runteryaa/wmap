@@ -1,41 +1,25 @@
 # Layered dimension compatibility
 
-WMap uses the `worldmap:wmap-layered-type` **dimension type** tag to select its
-vertical cave-layer renderer. The bundled tag is at:
+Dimension type tags are not used by WMap. A mod opts in by shipping one small
+JSON file in its own namespace:
 
-`src/main/resources/data/worldmap/tags/dimension_type/wmap-layered-type.json`
+`src/main/resources/data/<modid>/wmap_layered_dimensions.json`
 
-Vanilla Nether keeps its existing built-in behavior and is not included in the
-tag. Modded dimensions use layered mapping only when their developer explicitly
-adds a dimension type to this tag. To hardcode support for a mod dimension whose
-owner does not add compatibility, add that dimension's **dimension type ID** to
-the bundled file:
+The file is a JSON array containing dimension IDs only:
 
 ```json
-{
-  "replace": false,
-  "values": [
-    "examplemod:crystal_caves"
-  ]
-}
+[
+  "examplemod:crystal_caves",
+  "examplemod:another_cave_dimension"
+]
 ```
 
-The value is the dimension type ID, which can differ from the dimension ID. If
-the mod reuses one type for several dimensions, all of them are considered
-layered. A dedicated type lets you target just one dimension.
+WMap checks every installed Fabric mod for
+`data/<modid>/wmap_layered_dimensions.json` and combines the listed IDs. It
+does not inspect dimension type IDs. The dimensions must be declared on both
+the server and clients for multiplayer map scanning and synchronization to
+agree.
 
-Dimension mod authors can contribute entries to the same shared tag from their
-mod JAR at:
-
-`data/worldmap/tags/dimension_type/wmap-layered-type.json`
-
-```json
-{
-  "replace": false,
-  "values": ["examplemod:crystal_caves"]
-}
-```
-
-The resource tag is merged by Minecraft, so each mod can add its own types
-without replacing WMap's vanilla Nether entry. The tag data must be present on
-both the server and clients in multiplayer.
+WMap uses the same format in
+`src/main/resources/data/worldmap/wmap_layered_dimensions.json`, which lists
+`minecraft:the_nether` so vanilla Nether keeps its layered map view.

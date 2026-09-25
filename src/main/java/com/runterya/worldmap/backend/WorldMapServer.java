@@ -77,7 +77,7 @@ public class WorldMapServer {
                     int layerY = NetherMapView.getCaveLayerY(mapDimension);
                     int minY = context.player().level().getMinY();
                     int maxY = context.player().level().getMaxY();
-                    if (!NetherStyleDimensions.isNetherStyle(context.player().level())
+                    if (!LayeredDimensions.contains(context.player().level())
                         || layerY < minY || layerY >= maxY || Math.floorMod(layerY, NetherMapView.CAVE_LAYER_STEP) != 0) {
                         return;
                     }
@@ -199,7 +199,7 @@ public class WorldMapServer {
                 int cz = chunkPos.getMinBlockZ() >> 4;
                 String dimension = player.level().dimension().identifier().toString();
                 java.util.List<String> mapDimensions;
-                if (NetherStyleDimensions.isNetherStyle(player.level())) {
+                if (LayeredDimensions.contains(player.level())) {
                     int centerLayerY = NetherMapView.getPlayerLayerY(player.blockPosition().getY(),
                         player.level().getMinY(), player.level().getMaxY());
                     java.util.LinkedHashSet<String> nearbyLayerDimensions = new java.util.LinkedHashSet<>();
