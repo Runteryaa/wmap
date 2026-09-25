@@ -198,6 +198,13 @@ public class ClientMapManager {
             case OTHERS_EXPLORED -> Minecraft.getInstance().player == null
                 || explorers.stream().anyMatch(id -> !id.equals(Minecraft.getInstance().player.getUUID()));
             case ALL -> true;
+            case SELECTED_PLAYER -> {
+                try {
+                    yield explorers.contains(UUID.fromString(WorldMapConfig.selectedExplorerUuid()));
+                } catch (IllegalArgumentException exception) {
+                    yield false;
+                }
+            }
         };
     }
 

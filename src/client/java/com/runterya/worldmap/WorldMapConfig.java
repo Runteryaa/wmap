@@ -14,12 +14,15 @@ public final class WorldMapConfig {
     public enum MapLayer {
         MY_EXPLORED,
         OTHERS_EXPLORED,
-        ALL
+        ALL,
+        SELECTED_PLAYER
     }
 
     private static final Path CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("worldmap.json");
     private static boolean openWaypointActionsOnLook = true;
     private static MapLayer mapLayer = MapLayer.ALL;
+    private static String selectedExplorerUuid = "";
+    private static String selectedExplorerName = "";
     private static boolean showPlayers = true;
     private static boolean showWaypoints = true;
     private static boolean showExploredAreas = true;
@@ -43,6 +46,12 @@ public final class WorldMapConfig {
                 } catch (IllegalArgumentException ignored) {
                     mapLayer = MapLayer.ALL;
                 }
+            }
+            if (config.has("selectedExplorerUuid") && config.get("selectedExplorerUuid").isJsonPrimitive()) {
+                selectedExplorerUuid = config.get("selectedExplorerUuid").getAsString();
+            }
+            if (config.has("selectedExplorerName") && config.get("selectedExplorerName").isJsonPrimitive()) {
+                selectedExplorerName = config.get("selectedExplorerName").getAsString();
             }
             if (config.has("showPlayers") && config.get("showPlayers").isJsonPrimitive()) {
                 showPlayers = config.get("showPlayers").getAsBoolean();
@@ -72,8 +81,27 @@ public final class WorldMapConfig {
     }
 
     public static void cycleMapLayer() {
-        MapLayer[] layers = MapLayer.values();
-        mapLayer = layers[(mapLayer.ordinal() + 1) % layers.length];
+        mapLayer = switch (mapLayer) {
+            case MY_EXPLORED -> MapLayer.OTHERS_EXPLORED;
+            case OTHERS_EXPLORED -> MapLayer.ALL;
+            case ALL, SELECTED_PLAYER -> MapLayer.MY_EXPLORED;
+        };
+        save();
+        com.runterya.worldmap.client.ClientMapManager.refreshLayer();
+    }
+
+    public static String selectedExplorerUuid() {
+        return selectedExplorerUuid;
+    }
+
+    public static String selectedExplorerName() {
+        return selectedExplorerName;
+    }
+
+    public static void setSelectedExplorer(String uuid, String name) {
+        selectedExplorerUuid = uuid == null ? "" : uuid;
+        selectedExplorerName = name == null ? "" : name;
+        mapLayer = MapLayer.SELECTED_PLAYER;
         save();
         com.runterya.worldmap.client.ClientMapManager.refreshLayer();
     }
@@ -112,6 +140,8 @@ public final class WorldMapConfig {
             JsonObject config = new JsonObject();
             config.addProperty("openWaypointActionsOnLook", openWaypointActionsOnLook);
             config.addProperty("mapLayer", mapLayer.name());
+            config.addProperty("selectedExplorerUuid", selectedExplorerUuid);
+            config.addProperty("selectedExplorerName", selectedExplorerName);
             config.addProperty("showPlayers", showPlayers);
             config.addProperty("showWaypoints", showWaypoints);
             config.addProperty("showExploredAreas", showExploredAreas);
