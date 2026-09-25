@@ -63,6 +63,15 @@ public class MapColorExtractor {
         int netherMaxY = fixedNetherSlice
             ? NetherMapView.getMidLevelMaxY(chunk.getMinY(), chunk.getMaxY(), netherLogicalHeight)
             : -1;
+        int netherLavaY = fixedNetherSlice
+            ? NetherMapView.getLavaReferenceY(chunk.getMinY(), chunk.getMaxY(), netherLogicalHeight)
+            : 0;
+        int netherLavaMinY = fixedNetherSlice
+            ? Math.max(chunk.getMinY(), netherLavaY - NetherMapView.MID_LEVEL_LAVA_BAND_RADIUS)
+            : 0;
+        int netherLavaMaxY = fixedNetherSlice
+            ? Math.min(netherMaxY, netherLavaY + NetherMapView.MID_LEVEL_LAVA_BAND_RADIUS)
+            : -1;
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
             for (int z = 0; z < 16; z++) {
@@ -74,9 +83,40 @@ public class MapColorExtractor {
                 MapColor mapColor = MapColor.NONE;
                 BlockState state = chunk.getBlockState(pos);
                 if (fixedNetherSlice) {
-                    // Use the nearest non-air block in the bounded band around
-                    // the logical-height midpoint; fluids are valid samples too.
+                    // Prefer lava near its usual sea level so a nearby solid
+                    // block around the mid-level cannot hide the lava ocean.
                     boolean foundBlock = false;
+                    for (int offset = 0; offset <= NetherMapView.MID_LEVEL_LAVA_BAND_RADIUS; offset++) {
+                        int aboveLavaY = netherLavaY + offset;
+                        if (aboveLavaY <= netherLavaMaxY) {
+                            pos.set(chunk.getPos().getMinBlockX() + x, aboveLavaY,
+                                chunk.getPos().getMinBlockZ() + z);
+                            state = chunk.getBlockState(pos);
+                            if (state.getFluidState().is(FluidTags.LAVA)) {
+                                mapColor = state.getMapColor(chunk.getLevel(), pos);
+                                foundBlock = true;
+                                break;
+                            }
+                        }
+
+                        if (offset > 0) {
+                            int belowLavaY = netherLavaY - offset;
+                            if (belowLavaY >= netherLavaMinY) {
+                                pos.set(chunk.getPos().getMinBlockX() + x, belowLavaY,
+                                    chunk.getPos().getMinBlockZ() + z);
+                                state = chunk.getBlockState(pos);
+                                if (state.getFluidState().is(FluidTags.LAVA)) {
+                                    mapColor = state.getMapColor(chunk.getLevel(), pos);
+                                    foundBlock = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Otherwise use the nearest visible block in the bounded
+                    // band around the logical-height midpoint. Lava in this
+                    // band is also accepted as a regular sample.
                     for (int offset = 0; !foundBlock && offset <= NetherMapView.MID_LEVEL_BAND_RADIUS; offset++) {
                         int aboveY = y + offset;
                         if (aboveY <= netherMaxY) {
@@ -148,7 +188,9 @@ public class MapColorExtractor {
                     ? waterTint.getColor(pos)
                     : tintResolver.resolve(chunk, pos, state, mapColor);
                 if (tint == 0xFFFF00FF) tint = -1;
-                int textureColor = isWater ? -1 : textureResolver.resolve(state, pos);
+                int textureColor = isWater || (fixedNetherSlice && isLava)
+                    ? -1
+                    : textureResolver.resolve(state, pos);
 
                 if (textureColor != -1) {
                     if (tint != -1) {

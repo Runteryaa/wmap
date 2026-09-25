@@ -11,7 +11,10 @@ public enum NetherMapView {
     // around the logical midpoint includes the lava sea near Y 31 and levels
     // around Y 90, while staying clear of the bedrock ceiling and floor.
     public static final int MID_LEVEL_BAND_RADIUS = 34;
-    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_mid_playable_center_v3";
+    // Check around the vanilla lava sea independently so nearby terrain cannot
+    // hide the lava on this top-down map.
+    public static final int MID_LEVEL_LAVA_BAND_RADIUS = 8;
+    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_mid_playable_center_v4";
 
     public static int getMidLevelY(int minY, int maxY, int logicalHeight) {
         int logicalMaxYExclusive = Math.min(maxY, minY + Math.max(1, logicalHeight));
@@ -29,6 +32,10 @@ public enum NetherMapView {
         return Math.min(logicalMaxY, centerY + MID_LEVEL_BAND_RADIUS);
     }
 
+    public static int getLavaReferenceY(int minY, int maxY, int logicalHeight) {
+        int logicalMaxY = Math.min(maxY - 1, minY + Math.max(1, logicalHeight) - 1);
+        return Math.max(minY, Math.min(logicalMaxY, minY + Math.max(0, logicalHeight / 4 - 1)));
+    }
 
     public String storageDimension(String dimension) {
         return this == MID_LEVEL && NETHER_DIMENSION.equals(dimension)
