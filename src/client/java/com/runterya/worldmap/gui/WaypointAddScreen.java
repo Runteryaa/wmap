@@ -108,7 +108,7 @@ public class WaypointAddScreen extends Screen {
         }
 
         this.itemButton = this.addRenderableWidget(Button.builder(iconLabel(), button -> openItemPicker())
-            .bounds(centerX - 100, centerY + 4, 200, 20).build());
+            .bounds(centerX - 76, centerY + 4, 176, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal(this.editingWaypoint == null ? "Add" : "Save"), button -> {
             int color = 0xFF000000 | this.currentColor;
@@ -297,6 +297,28 @@ public class WaypointAddScreen extends Screen {
         
         int centerX = this.width / 2;
         int centerY = this.height / 2;
+
+        if (this.editingWaypoint != null) {
+            String owner = this.editingWaypoint.getCreatorName();
+            if (owner.isBlank() && !this.editingWaypoint.isGlobal()
+                && this.minecraft != null && this.minecraft.player != null) {
+                owner = this.minecraft.player.getName().getString();
+            }
+            if (!owner.isBlank()) {
+                graphics.text(this.font, owner + "'s Waypoint", centerX - 100, centerY - 94, 0xFFCCCCCC);
+            }
+        }
+
+        int iconSlotX = centerX - 100;
+        int iconSlotY = centerY + 4;
+        graphics.fill(iconSlotX, iconSlotY, iconSlotX + 20, iconSlotY + 20, 0xFF41414A);
+        graphics.outline(iconSlotX, iconSlotY, 20, 20, 0xFF777777);
+        ItemStack selectedIcon = selectedIconStack();
+        if (selectedIcon.isEmpty()) {
+            graphics.centeredText(this.font, "□", iconSlotX + 10, iconSlotY + 6, 0xFFFFFFFF);
+        } else {
+            graphics.item(selectedIcon, iconSlotX + 2, iconSlotY + 2);
+        }
         
         // Draw Color Wheel if enabled
         if (this.showColorWheel) {
@@ -315,6 +337,14 @@ public class WaypointAddScreen extends Screen {
         graphics.fill(boxX + 1, boxY + 1, boxX + 19, boxY + 19, 0xFF000000 | this.currentColor); // Color
 
         if (this.itemPickerOpen) drawItemPicker(graphics, mouseX, mouseY);
+    }
+
+    private ItemStack selectedIconStack() {
+        if (this.currentIcon.isBlank()) return ItemStack.EMPTY;
+        Identifier id = Identifier.tryParse(this.currentIcon);
+        if (id == null) return ItemStack.EMPTY;
+        Item item = BuiltInRegistries.ITEM.getValue(id);
+        return item == Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
     }
 
     private void drawItemPicker(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
