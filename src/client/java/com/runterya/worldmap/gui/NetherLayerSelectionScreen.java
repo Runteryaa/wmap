@@ -8,19 +8,21 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Lets the player choose any saved Nether cave height or the bedrock-top map. */
+/** Lets the player choose the surface view or a saved vertical cave layer. */
 public final class NetherLayerSelectionScreen extends Screen {
     private static final int COLUMNS = 5;
     private static final int CELL_HEIGHT = 24;
     private final Screen parent;
     private final int minY;
     private final int maxY;
+    private final String selectedDimension;
 
-    public NetherLayerSelectionScreen(Screen parent, int minY, int maxY) {
-        super(Component.literal("Nether Map Layer"));
+    public NetherLayerSelectionScreen(Screen parent, int minY, int maxY, String selectedDimension) {
+        super(Component.literal("Cave Map Layer"));
         this.parent = parent;
         this.minY = minY;
         this.maxY = maxY;
+        this.selectedDimension = selectedDimension;
     }
 
     @Override
@@ -63,7 +65,7 @@ public final class NetherLayerSelectionScreen extends Screen {
 
         int selectedLayerY = WorldMapConfig.selectedNetherLayerY(
             this.minY, this.maxY, minecraft.level != null
-                && minecraft.level.dimension().identifier().toString().equals(NetherMapView.NETHER_DIMENSION)
+                && minecraft.level.dimension().identifier().toString().equals(this.selectedDimension)
                 ? minecraft.player.blockPosition().getY() : 40);
         for (int layerY = minLayerY; layerY <= maxLayerY; layerY += NetherMapView.CAVE_LAYER_STEP) {
             int index = 2 + (layerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP;
@@ -101,7 +103,7 @@ public final class NetherLayerSelectionScreen extends Screen {
 
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xE0181A20);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF777777);
-        graphics.centeredText(this.font, "Nether Map Layer", this.width / 2, panelTop + 10, 0xFFFFFFFF);
+        graphics.centeredText(this.font, "Cave Map Layer", this.width / 2, panelTop + 10, 0xFFFFFFFF);
         graphics.centeredText(this.font, "Choose bedrock top or any 8-block cave layer",
             this.width / 2, panelTop + 29, 0xFFB8B8B8);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);

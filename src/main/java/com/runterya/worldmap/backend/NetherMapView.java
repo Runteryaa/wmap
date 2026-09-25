@@ -31,7 +31,7 @@ public enum NetherMapView {
     }
 
     public String storageDimension(String dimension, int layerY) {
-        if (this != CAVE_LAYER || !NETHER_DIMENSION.equals(dimension)) return dimension;
+        if (this != CAVE_LAYER) return dimension;
         // Reuse the existing Y=40 data as the matching new cave layer.
         if (layerY == 40) return dimension + LEGACY_MID_LEVEL_SUFFIX;
         return dimension + CAVE_LAYER_SUFFIX + layerY + "_v1";

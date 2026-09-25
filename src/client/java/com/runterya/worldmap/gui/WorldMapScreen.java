@@ -2,6 +2,7 @@ package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.backend.NetherMapView;
+import com.runterya.worldmap.backend.NetherStyleDimensions;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -88,12 +89,12 @@ public class WorldMapScreen extends Screen {
         ).bounds(8, this.height - 28, 100, 20).build());
         this.netherViewButton = this.addRenderableWidget(Button.builder(netherViewLabel(activeDimension()), button -> {
             Minecraft minecraft = Minecraft.getInstance();
-            boolean playerInNether = minecraft.level != null && minecraft.player != null
+            boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
                 && minecraft.level.dimension().identifier().toString().equals(activeDimension());
-            int minY = playerInNether ? minecraft.level.getMinY() : -64;
-            int maxY = playerInNether ? minecraft.level.getMaxY() : 256;
+            int minY = playerInSelectedDimension ? minecraft.level.getMinY() : -64;
+            int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
             com.runterya.worldmap.client.ClientPlatform.setScreen(
-                this.minecraft, new NetherLayerSelectionScreen(this, minY, maxY)
+                this.minecraft, new NetherLayerSelectionScreen(this, minY, maxY, activeDimension())
             );
         }).bounds(112, this.height - 28, 150, 20).build());
         this.dimensionButton = this.addRenderableWidget(Button.builder(dimensionButtonLabel(), button -> {
@@ -122,7 +123,7 @@ public class WorldMapScreen extends Screen {
         int centerY = this.height / 2;
         String currentDim = activeDimension();
         if (this.netherViewButton != null) this.netherViewButton.setMessage(netherViewLabel(currentDim));
-        if (this.netherViewButton != null) this.netherViewButton.active = NetherMapView.NETHER_DIMENSION.equals(currentDim);
+        if (this.netherViewButton != null) this.netherViewButton.active = isNetherStyleDimension(currentDim);
         if (this.dimensionButton != null) this.dimensionButton.setMessage(dimensionButtonLabel());
 
         graphics.pose().pushMatrix();
@@ -221,6 +222,13 @@ public class WorldMapScreen extends Screen {
         };
     }
 
+    private static boolean isNetherStyleDimension(String dimension) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) return NetherMapView.NETHER_DIMENSION.equals(dimension);
+        return NetherStyleDimensions.isNetherStyle(dimension,
+            minecraft.level.registryAccess().lookupOrThrow(Registries.LEVEL_STEM));
+    }
+
     private List<String> availableDimensions() {
         LinkedHashSet<String> dimensions = new LinkedHashSet<>(List.of(
             "minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"
@@ -313,8 +321,10 @@ public class WorldMapScreen extends Screen {
     }
 
     private static Component netherViewLabel(String dimension) {
+        String prefix = NetherMapView.NETHER_DIMENSION.equals(dimension) ? "Nether" : "Cave";
         if (WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE) {
-            return Component.literal("Nether: Bedrock top");
+            return Component.literal(NetherMapView.NETHER_DIMENSION.equals(dimension)
+                ? "Nether: Bedrock top" : "Cave: Surface");
         }
         Minecraft minecraft = Minecraft.getInstance();
         boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
@@ -323,12 +333,12 @@ public class WorldMapScreen extends Screen {
         int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
         int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
         int layerY = WorldMapConfig.selectedNetherLayerY(minY, maxY, playerY);
-        return Component.literal("Nether: Cave layer Y " + layerY);
+        return Component.literal(prefix + ": Layer Y " + layerY);
     }
 
     private static String currentMapDimension(String currentDimension) {
         NetherMapView view = WorldMapConfig.netherMapView();
-        if (view == NetherMapView.CAVE_LAYER && NetherMapView.NETHER_DIMENSION.equals(currentDimension)) {
+        if (view == NetherMapView.CAVE_LAYER && isNetherStyleDimension(currentDimension)) {
             Minecraft minecraft = Minecraft.getInstance();
             boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
                 && minecraft.level.dimension().identifier().toString().equals(currentDimension);

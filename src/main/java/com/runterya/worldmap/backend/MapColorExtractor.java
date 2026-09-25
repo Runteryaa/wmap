@@ -58,8 +58,8 @@ public class MapColorExtractor {
                                 BlockTextureColorResolver textureResolver, int requestedNetherScanStartY) {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
-        boolean netherCaveLayer = requestedNetherScanStartY != Integer.MIN_VALUE && NetherMapView.NETHER_DIMENSION.equals(
-            chunk.getLevel().dimension().identifier().toString());
+        boolean netherCaveLayer = requestedNetherScanStartY != Integer.MIN_VALUE
+            && NetherStyleDimensions.isNetherStyle(chunk.getLevel());
         int netherScanStartY = netherCaveLayer
             ? Math.max(chunk.getMinY(), Math.min(chunk.getMaxY() - 1, requestedNetherScanStartY))
             : 0;

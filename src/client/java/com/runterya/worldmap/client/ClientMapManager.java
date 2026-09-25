@@ -2,6 +2,7 @@ package com.runterya.worldmap.client;
 
 import com.runterya.worldmap.WorldMapConfig;
 import com.runterya.worldmap.backend.NetherMapView;
+import com.runterya.worldmap.backend.NetherStyleDimensions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -105,7 +106,7 @@ public class ClientMapManager {
     public static void processPendingChunks(int limit) {
         Minecraft minecraft = Minecraft.getInstance();
         int currentNetherLayerY = minecraft.level != null && minecraft.player != null
-            && NetherMapView.NETHER_DIMENSION.equals(minecraft.level.dimension().identifier().toString())
+            && NetherStyleDimensions.isNetherStyle(minecraft.level)
                 ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
                     minecraft.level.getMinY(), minecraft.level.getMaxY())
                 : Integer.MIN_VALUE;
@@ -124,7 +125,7 @@ public class ClientMapManager {
             int chunkX = chunk.getPos().x();
             int chunkZ = chunk.getPos().z();
             String dimension = minecraft.level.dimension().identifier().toString();
-            boolean inNether = NetherMapView.NETHER_DIMENSION.equals(dimension);
+            boolean inNether = NetherStyleDimensions.isNetherStyle(minecraft.level);
             int centerLayerY = inNether && minecraft.player != null
                 ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
                     minecraft.level.getMinY(), minecraft.level.getMaxY())
