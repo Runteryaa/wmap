@@ -27,13 +27,17 @@ public enum NetherMapView {
     }
 
     public String storageDimension(String dimension) {
-        return this == CAVE_LAYER ? storageDimension(dimension, 40) : dimension;
+        return this == CAVE_LAYER && LayeredDimensions.contains(dimension)
+            ? storageDimension(dimension, 40) : dimension;
     }
 
     public String storageDimension(String dimension, int layerY) {
         if (this != CAVE_LAYER) return dimension;
-        // Reuse the existing Y=40 data as the matching new cave layer.
-        if (layerY == 40) return dimension + LEGACY_MID_LEVEL_SUFFIX;
+        // Reuse the existing Y=40 Nether data as its matching cave layer.
+        // Other opted-in dimensions need independent per-dimension layer keys.
+        if (layerY == 40 && NETHER_DIMENSION.equals(dimension)) {
+            return dimension + LEGACY_MID_LEVEL_SUFFIX;
+        }
         return dimension + CAVE_LAYER_SUFFIX + layerY + "_v1";
     }
 

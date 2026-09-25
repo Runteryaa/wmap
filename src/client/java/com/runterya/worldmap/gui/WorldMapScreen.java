@@ -97,6 +97,8 @@ public class WorldMapScreen extends Screen {
                 this.minecraft, new NetherLayerSelectionScreen(this, minY, maxY, activeDimension())
             );
         }).bounds(112, this.height - 28, 150, 20).build());
+        this.netherViewButton.visible = isNetherStyleDimension(activeDimension());
+        this.netherViewButton.active = this.netherViewButton.visible;
         this.dimensionButton = this.addRenderableWidget(Button.builder(dimensionButtonLabel(), button -> {
             this.itemPickerOpen = false;
             this.dimensionPickerOpen = !this.dimensionPickerOpen;
@@ -122,8 +124,12 @@ public class WorldMapScreen extends Screen {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
         String currentDim = activeDimension();
-        if (this.netherViewButton != null) this.netherViewButton.setMessage(netherViewLabel(currentDim));
-        if (this.netherViewButton != null) this.netherViewButton.active = isNetherStyleDimension(currentDim);
+        if (this.netherViewButton != null) {
+            boolean supportsLayers = isNetherStyleDimension(currentDim);
+            this.netherViewButton.setMessage(netherViewLabel(currentDim));
+            this.netherViewButton.visible = supportsLayers;
+            this.netherViewButton.active = supportsLayers;
+        }
         if (this.dimensionButton != null) this.dimensionButton.setMessage(dimensionButtonLabel());
 
         graphics.pose().pushMatrix();
@@ -347,7 +353,10 @@ public class WorldMapScreen extends Screen {
                 minY, maxY, playerY);
             return view.storageDimension(currentDimension, layerY);
         }
-        return view.storageDimension(currentDimension);
+        // The cave-layer preference only applies to dimensions explicitly opted in.
+        // Keep ordinary dimensions on their normal map instead of looking up an
+        // empty synthetic cave-layer cache (which made Overworld/End appear blank).
+        return currentDimension;
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {

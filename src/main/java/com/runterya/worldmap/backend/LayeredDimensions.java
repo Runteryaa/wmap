@@ -30,6 +30,9 @@ public final class LayeredDimensions {
 
     /** Checks a dimension ID against all installed mods' declarations. */
     public static boolean contains(String dimensionId) {
+        // The Nether is WMap's built-in layered dimension. Keep it available even
+        // if the bundled declaration resource cannot be found by a loader build.
+        if (NetherMapView.NETHER_DIMENSION.equals(dimensionId)) return true;
         loadDeclarations();
         return DIMENSIONS.contains(dimensionId);
     }
