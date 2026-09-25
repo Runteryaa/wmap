@@ -87,9 +87,8 @@ public final class WorldMapConfigScreen extends Screen {
             Component.literal("Delete all my waypoints"), button -> this.confirmingBulkDelete = true
         ).bounds(buttonLeft, panelTop + 370 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.doneButton = this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
-            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
-        ).bounds(this.width / 2 - 100, panelTop + panelHeight - 32, 200, 22).build());
+        this.doneButton = this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> closeSettings())
+            .bounds(this.width / 2 - 100, panelTop + panelHeight - 32, 200, 22).build());
     }
 
     @Override
@@ -165,6 +164,10 @@ public final class WorldMapConfigScreen extends Screen {
         this.waypointsButton.setWidth(buttonWidth);
         this.deleteAllWaypointsButton.setX(buttonLeft);
         this.deleteAllWaypointsButton.setWidth(buttonWidth);
+    }
+
+    private void closeSettings() {
+        com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
     }
 
     private void drawBulkDeleteConfirmation(net.minecraft.client.gui.GuiGraphicsExtractor graphics) {
@@ -328,6 +331,12 @@ public final class WorldMapConfigScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
         if (this.confirmingBulkDelete) return handleBulkDeleteConfirmationClick(event);
         if (this.playerPickerOpen) return handlePlayerPickerClick(event);
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT
+            && event.x() >= this.doneButton.getX() && event.x() < this.doneButton.getX() + this.doneButton.getWidth()
+            && event.y() >= this.doneButton.getY() && event.y() < this.doneButton.getY() + this.doneButton.getHeight()) {
+            closeSettings();
+            return true;
+        }
         int panelWidth = Math.min(PANEL_WIDTH, this.width - 24);
         int panelLeft = (this.width - panelWidth) / 2;
         int panelTop = (this.height - panelHeight()) / 2;

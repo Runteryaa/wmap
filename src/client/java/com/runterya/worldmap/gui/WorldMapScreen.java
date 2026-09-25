@@ -170,10 +170,10 @@ public class WorldMapScreen extends Screen {
             }
         }
 
-        // Draw the vanilla player indicators after waypoints so they stay on top.
-        if (WorldMapConfig.showPlayers()) {
-            drawPlayerMarkers(graphics, font, centerX, centerY, currentDim);
-        }
+        // Keep the local position visible while filtering other players' explored areas.
+        drawLocalPlayerMarker(graphics, centerX, centerY);
+        // Draw remote player indicators after waypoints so they stay on top.
+        if (WorldMapConfig.showPlayers()) drawOtherPlayerMarkers(graphics, font, centerX, centerY, currentDim);
 
         // Draw mouse coordinates
         double mouseWorldX = (mouseX - centerX) / scale - panX;
@@ -542,21 +542,24 @@ public class WorldMapScreen extends Screen {
         return true;
     }
 
-    private void drawPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
-                                   net.minecraft.client.gui.Font font, int centerX, int centerY, String currentDim) {
-        if (Minecraft.getInstance().player != null) {
-            var player = Minecraft.getInstance().player;
-            double playerX = centerX + (player.getX() + panX) * scale;
-            double playerY = centerY + (player.getZ() + panY) * scale;
-            double[] marker = markerScreenPosition(playerX, playerY, centerX, centerY);
-            boolean onScreen = playerX >= 10 && playerX <= width - 10
-                && playerY >= 10 && playerY <= height - 24;
-            float rotation = onScreen
-                ? player.getYRot() + 180.0f
-                : (float) Math.toDegrees(Math.atan2(playerX - centerX, -(playerY - centerY)));
-            drawPlayerArrow(graphics, marker[0], marker[1], rotation, 0xFFFFFFFF);
-        }
+    private void drawLocalPlayerMarker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                       int centerX, int centerY) {
+        var player = Minecraft.getInstance().player;
+        if (player == null) return;
+        double playerX = centerX + (player.getX() + panX) * scale;
+        double playerY = centerY + (player.getZ() + panY) * scale;
+        double[] marker = markerScreenPosition(playerX, playerY, centerX, centerY);
+        boolean onScreen = playerX >= 10 && playerX <= width - 10
+            && playerY >= 10 && playerY <= height - 24;
+        float rotation = onScreen
+            ? player.getYRot() + 180.0f
+            : (float) Math.toDegrees(Math.atan2(playerX - centerX, -(playerY - centerY)));
+        drawPlayerArrow(graphics, marker[0], marker[1], rotation, 0xFFFFFFFF);
+    }
 
+    private void drawOtherPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                        net.minecraft.client.gui.Font font, int centerX, int centerY,
+                                        String currentDim) {
         for (com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player : ClientMapManager.getOtherPlayers()) {
             if (!player.dimension().equals(currentDim)) continue;
             if (Minecraft.getInstance().player != null && player.uuid().equals(Minecraft.getInstance().player.getUUID())) {
