@@ -5,14 +5,16 @@ vertical cave-layer renderer. The bundled tag is at:
 
 `src/main/resources/data/worldmap/tags/dimension_type/wmap-layered-type.json`
 
-To hardcode support for a mod dimension whose owner does not add compatibility,
-add that dimension's **dimension type ID** to the bundled file:
+Vanilla Nether keeps its existing built-in behavior and is not included in the
+tag. Modded dimensions use layered mapping only when their developer explicitly
+adds a dimension type to this tag. To hardcode support for a mod dimension whose
+owner does not add compatibility, add that dimension's **dimension type ID** to
+the bundled file:
 
 ```json
 {
   "replace": false,
   "values": [
-    "minecraft:the_nether",
     "examplemod:crystal_caves"
   ]
 }
