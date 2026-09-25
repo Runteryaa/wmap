@@ -690,10 +690,11 @@ public class WorldMapScreen extends Screen {
     private void drawLocalPlayerMarker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
                                        int centerX, int centerY) {
         var player = Minecraft.getInstance().player;
-        if (player == null || Minecraft.getInstance().level == null
-            || !Minecraft.getInstance().level.dimension().identifier().toString().equals(activeDimension())) return;
-        double playerX = centerX + (player.getX() + panX) * scale;
-        double playerY = centerY + (player.getZ() + panY) * scale;
+        if (player == null || Minecraft.getInstance().level == null) return;
+        double[] mapPosition = getLocalPlayerPositionInActiveDimension();
+        if (mapPosition == null) return;
+        double playerX = centerX + (mapPosition[0] + panX) * scale;
+        double playerY = centerY + (mapPosition[1] + panY) * scale;
         double[] marker = markerScreenPosition(playerX, playerY, centerX, centerY);
         boolean onScreen = playerX >= 10 && playerX <= width - 10
             && playerY >= 10 && playerY <= height - 24;
@@ -701,6 +702,45 @@ public class WorldMapScreen extends Screen {
             ? player.getYRot() + 180.0f
             : (float) Math.toDegrees(Math.atan2(playerX - centerX, -(playerY - centerY)));
         drawPlayerArrow(graphics, marker[0], marker[1], rotation, 0xFFFFFFFF);
+    }
+
+    /** Projects the local player's coordinates into the currently viewed dimension. */
+    private double[] getLocalPlayerPositionInActiveDimension() {
+        Minecraft minecraft = Minecraft.getInstance();
+        var player = minecraft.player;
+        var level = minecraft.level;
+        if (player == null || level == null) return new double[] {0.0, 0.0};
+
+        String playerDimension = level.dimension().identifier().toString();
+        String mapDimension = activeDimension();
+        if (playerDimension.equals(mapDimension)) return new double[] {player.getX(), player.getZ()};
+
+        double playerScale = dimensionCoordinateScale(playerDimension);
+        double mapScale = dimensionCoordinateScale(mapDimension);
+        // Equal coordinate scales do not imply that two dimensions share coordinates
+        // (for example, the End has scale 1 like the Overworld). Only project between
+        // dimensions when their dimension types define a real scale conversion.
+        if (Math.abs(playerScale - mapScale) < 1.0E-9) return null;
+        double ratio = playerScale / mapScale;
+        return new double[] {player.getX() * ratio, player.getZ() * ratio};
+    }
+
+    /** Uses each dimension type's vanilla coordinate scale when available. */
+    private static double dimensionCoordinateScale(String dimension) {
+        Minecraft minecraft = Minecraft.getInstance();
+        Identifier id = Identifier.tryParse(dimension);
+        if (id != null && minecraft.level != null) {
+            var levelStems = minecraft.level.registryAccess().lookup(Registries.LEVEL_STEM).orElse(null);
+            if (levelStems != null) {
+                var stem = levelStems.getValue(id);
+                if (stem != null) {
+                    double coordinateScale = stem.type().value().coordinateScale();
+                    if (Double.isFinite(coordinateScale) && coordinateScale > 0.0) return coordinateScale;
+                }
+            }
+        }
+        // Keep vanilla Overworld/Nether behavior correct if a registry entry is unavailable.
+        return NetherMapView.NETHER_DIMENSION.equals(dimension) ? 8.0 : 1.0;
     }
 
     private void drawOtherPlayerMarkers(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -848,15 +888,16 @@ public class WorldMapScreen extends Screen {
             String currentDim = activeDimension();
 
             if (WorldMapConfig.showPlayers() && Minecraft.getInstance().player != null
-                && Minecraft.getInstance().level != null
-                && Minecraft.getInstance().level.dimension().identifier().toString().equals(currentDim)) {
-                var localPlayer = Minecraft.getInstance().player;
-                double localX = centerX + (localPlayer.getX() + panX) * scale;
-                double localY = centerY + (localPlayer.getZ() + panY) * scale;
-                double[] localMarker = markerScreenPosition(localX, localY, centerX, centerY);
-                if (isNearMarker(event.x(), event.y(), localMarker[0], localMarker[1])) {
-                    centerMapOn(localPlayer.getX(), localPlayer.getZ());
-                    return true;
+                && Minecraft.getInstance().level != null) {
+                double[] mapPosition = getLocalPlayerPositionInActiveDimension();
+                if (mapPosition != null) {
+                    double localX = centerX + (mapPosition[0] + panX) * scale;
+                    double localY = centerY + (mapPosition[1] + panY) * scale;
+                    double[] localMarker = markerScreenPosition(localX, localY, centerX, centerY);
+                    if (isNearMarker(event.x(), event.y(), localMarker[0], localMarker[1])) {
+                        centerMapOn(mapPosition[0], mapPosition[1]);
+                        return true;
+                    }
                 }
             }
 
