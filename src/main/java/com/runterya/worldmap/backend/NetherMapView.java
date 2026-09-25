@@ -6,35 +6,13 @@ public enum NetherMapView {
     MID_LEVEL;
 
     public static final String NETHER_DIMENSION = "minecraft:the_nether";
-    // Vanilla's Nether logical height is 128 blocks (Y 0..127 in 26.1.2),
-    // even though its physical build height reaches Y 256. A 34-block band
-    // around the logical midpoint includes the lava sea near Y 31 and levels
-    // around Y 90, while staying clear of the bedrock ceiling and floor.
-    public static final int MID_LEVEL_BAND_RADIUS = 34;
-    // Check around the vanilla lava sea independently so nearby terrain cannot
-    // hide the lava on this top-down map.
-    public static final int MID_LEVEL_LAVA_BAND_RADIUS = 8;
-    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_mid_playable_center_v4";
+    // Better Nether Map uses a fixed Nether starting height of Y=40 and lets
+    // vanilla map sampling find the first visible map-colored block below it.
+    public static final int MID_LEVEL_SCAN_START_Y = 40;
+    private static final String MID_LEVEL_SUFFIX = "#worldmap:nether_fixed_scan_y40_v5";
 
-    public static int getMidLevelY(int minY, int maxY, int logicalHeight) {
-        int logicalMaxYExclusive = Math.min(maxY, minY + Math.max(1, logicalHeight));
-        return minY + Math.max(0, logicalMaxYExclusive - minY) / 2;
-    }
-
-    public static int getMidLevelMinY(int minY, int maxY, int logicalHeight) {
-        int centerY = getMidLevelY(minY, maxY, logicalHeight);
-        return Math.max(minY, centerY - MID_LEVEL_BAND_RADIUS);
-    }
-
-    public static int getMidLevelMaxY(int minY, int maxY, int logicalHeight) {
-        int centerY = getMidLevelY(minY, maxY, logicalHeight);
-        int logicalMaxY = Math.min(maxY - 1, minY + Math.max(1, logicalHeight) - 1);
-        return Math.min(logicalMaxY, centerY + MID_LEVEL_BAND_RADIUS);
-    }
-
-    public static int getLavaReferenceY(int minY, int maxY, int logicalHeight) {
-        int logicalMaxY = Math.min(maxY - 1, minY + Math.max(1, logicalHeight) - 1);
-        return Math.max(minY, Math.min(logicalMaxY, minY + Math.max(0, logicalHeight / 4 - 1)));
+    public static int getMidLevelScanStartY(int minY, int maxY) {
+        return Math.max(minY + 1, Math.min(maxY - 1, MID_LEVEL_SCAN_START_Y));
     }
 
     public String storageDimension(String dimension) {

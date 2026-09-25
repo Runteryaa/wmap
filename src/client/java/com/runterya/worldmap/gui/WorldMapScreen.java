@@ -190,10 +190,9 @@ public class WorldMapScreen extends Screen {
             return Component.literal("Nether: Bedrock top");
         }
         Minecraft minecraft = Minecraft.getInstance();
-        int midY = minecraft.level == null ? 64
-            : NetherMapView.getMidLevelY(minecraft.level.getMinY(), minecraft.level.getMaxY(),
-                minecraft.level.dimensionType().logicalHeight());
-        return Component.literal("Nether: Mid-level (~Y " + midY + ")");
+        int startY = minecraft.level == null ? NetherMapView.MID_LEVEL_SCAN_START_Y
+            : NetherMapView.getMidLevelScanStartY(minecraft.level.getMinY(), minecraft.level.getMaxY());
+        return Component.literal("Nether: Mid-level (from Y " + startY + ")");
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {
