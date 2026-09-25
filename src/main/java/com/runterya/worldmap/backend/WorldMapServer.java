@@ -71,7 +71,8 @@ public class WorldMapServer {
                 // Client biome color resources are authoritative for map tinting;
                 // persist and share the vanilla-resolved colors it reports.
                 String playerDimension = context.player().level().dimension().identifier().toString();
-                if (!playerDimension.equals(payload.dimension())) return;
+                String mapDimension = payload.dimension();
+                if (!playerDimension.equals(NetherMapView.gameDimension(mapDimension))) return;
                 clientTintedChunks.put(new DimensionChunkKey(payload.dimension(), chunkKey(payload.chunkX(), payload.chunkZ())), payload.colors().clone());
                 Set<UUID> explorers = storage == null
                     ? Set.of(context.player().getUUID())
@@ -188,12 +189,17 @@ public class WorldMapServer {
                 int cx = chunkPos.getMinBlockX() >> 4;
                 int cz = chunkPos.getMinBlockZ() >> 4;
                 String dimension = player.level().dimension().identifier().toString();
-                DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(cx, cz));
-                int[] saved = clientTintedChunks.get(key);
-                if (saved == null && storage != null) saved = storage.getChunk(dimension, cx, cz);
-                if (saved != null) {
-                    Set<UUID> explorers = storage == null ? Set.of() : storage.getExplorers(dimension, cx, cz);
-                    ServerPlayNetworking.send(player, new MapUpdatePayload(dimension, cx, cz, saved, List.copyOf(explorers)));
+                NetherMapView[] views = NetherMapView.NETHER_DIMENSION.equals(dimension)
+                    ? NetherMapView.values() : new NetherMapView[]{NetherMapView.BEDROCK_SURFACE};
+                for (NetherMapView view : views) {
+                    String mapDimension = view.storageDimension(dimension);
+                    DimensionChunkKey key = new DimensionChunkKey(mapDimension, chunkKey(cx, cz));
+                    int[] saved = clientTintedChunks.get(key);
+                    if (saved == null && storage != null) saved = storage.getChunk(mapDimension, cx, cz);
+                    if (saved != null) {
+                        Set<UUID> explorers = storage == null ? Set.of() : storage.getExplorers(mapDimension, cx, cz);
+                        ServerPlayNetworking.send(player, new MapUpdatePayload(mapDimension, cx, cz, saved, List.copyOf(explorers)));
+                    }
                 }
 
             },

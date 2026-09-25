@@ -27,7 +27,7 @@ public class MapColorExtractor {
     }
 
     public static int[] extract(LevelChunk chunk) {
-        return extract(chunk, (sourceChunk, pos, ignoredState, mapColor) -> -1);
+        return extract(chunk, (sourceChunk, pos, ignoredState, mapColor) -> -1, (state, pos) -> -1, false);
     }
 
     /**
@@ -36,17 +36,26 @@ public class MapColorExtractor {
      * the client passes Minecraft's block tint sources here.
      */
     public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver) {
-        return extract(chunk, tintResolver, (state, pos) -> -1);
+        return extract(chunk, tintResolver, (state, pos) -> -1, false);
     }
 
     /** Extracts colors from block textures, biome tints, map colors, and terrain shading. */
     public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver, BlockTextureColorResolver textureResolver) {
+        return extract(chunk, tintResolver, textureResolver, false);
+    }
+
+    /** Extracts the Nether's mid-level view when requested; other dimensions retain the current surface view. */
+    public static int[] extract(LevelChunk chunk, BiomeTintResolver tintResolver,
+                                BlockTextureColorResolver textureResolver, boolean netherMidLevel) {
         int[] colors = new int[256];
         WaterBiomeTint waterTint = new WaterBiomeTint(chunk);
         for (int x = 0; x < 16; x++) {
             int prevY = -1;
             for (int z = 0; z < 16; z++) {
-                int y = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+                int y = netherMidLevel && NetherMapView.NETHER_DIMENSION.equals(
+                    chunk.getLevel().dimension().identifier().toString())
+                    ? chunk.getMinY() + (chunk.getMaxY() - chunk.getMinY()) / 2
+                    : chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
                 BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(chunk.getPos().getMinBlockX() + x, y, chunk.getPos().getMinBlockZ() + z);
                 
                 MapColor mapColor = MapColor.NONE;
@@ -54,7 +63,7 @@ public class MapColorExtractor {
                 while (pos.getY() > chunk.getMinY()) {
                     state = chunk.getBlockState(pos);
                     mapColor = state.getMapColor(chunk.getLevel(), pos);
-                    if (mapColor != MapColor.NONE) {
+                    if (mapColor != MapColor.NONE && !(netherMidLevel && state.is(net.minecraft.world.level.block.Blocks.BEDROCK))) {
                         break;
                     }
                     pos.move(0, -1, 0);

@@ -1,6 +1,7 @@
 package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
+import com.runterya.worldmap.backend.NetherMapView;
 import com.runterya.worldmap.client.ClientMapManager;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.client.Minecraft;
@@ -50,6 +51,7 @@ public class WorldMapScreen extends Screen {
         com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player
     ) {}
     private Button itemSearchButton;
+    private Button netherViewButton;
     private boolean itemPickerOpen;
     private String itemPickerSearch = "";
     private int itemPickerScrollRow;
@@ -74,6 +76,14 @@ public class WorldMapScreen extends Screen {
                 this.minecraft, new WorldMapConfigScreen(this)
             )
         ).bounds(8, this.height - 28, 100, 20).build());
+        if (Minecraft.getInstance().level != null
+            && NetherMapView.NETHER_DIMENSION.equals(Minecraft.getInstance().level.dimension().identifier().toString())) {
+            this.netherViewButton = this.addRenderableWidget(Button.builder(netherViewLabel(), button -> {
+                WorldMapConfig.toggleNetherMapView();
+                button.setMessage(netherViewLabel());
+                ClientMapManager.queueLoadedChunks();
+            }).bounds(112, this.height - 28, 150, 20).build());
+        }
         this.waypointSearchField = new EditBox(this.font,
             Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8), 8,
             Math.min(190, this.width - 110), 20,
@@ -106,7 +116,8 @@ public class WorldMapScreen extends Screen {
 
         // Render map regions
         if (WorldMapConfig.showExploredAreas()) {
-            Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(currentDim);
+            String mapDimension = WorldMapConfig.netherMapView().storageDimension(currentDim);
+            Map<ChunkPos, ClientMapManager.RegionTexture> regions = ClientMapManager.getRegions(mapDimension);
             for (Map.Entry<ChunkPos, ClientMapManager.RegionTexture> entry : regions.entrySet()) {
                 ChunkPos regionPos = entry.getKey();
                 ClientMapManager.RegionTexture texture = entry.getValue();
@@ -172,6 +183,11 @@ public class WorldMapScreen extends Screen {
 
         drawWaypointSearchResults(graphics, mouseX, mouseY, currentDim);
         if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
+    }
+
+    private static Component netherViewLabel() {
+        return Component.literal(WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE
+            ? "Nether: Bedrock top" : "Nether: Mid-level");
     }
 
     private List<com.runterya.worldmap.network.PlayerPosPayload.PlayerPos> getPlayersInDimension(String currentDim) {

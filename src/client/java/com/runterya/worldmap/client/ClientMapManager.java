@@ -1,6 +1,7 @@
 package com.runterya.worldmap.client;
 
 import com.runterya.worldmap.WorldMapConfig;
+import com.runterya.worldmap.backend.NetherMapView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -111,12 +112,17 @@ public class ClientMapManager {
             int chunkX = chunk.getPos().x();
             int chunkZ = chunk.getPos().z();
             String dimension = minecraft.level.dimension().identifier().toString();
-            int[] colors = ClientMapColorExtractor.extract(chunk);
-            receiveLocalUpdate(dimension, chunkX, chunkZ, colors);
-            ClientMapStorage.saveChunk(dimension, chunkX, chunkZ, colors, getExplorers(dimension, chunkX, chunkZ));
+            boolean inNether = NetherMapView.NETHER_DIMENSION.equals(dimension);
+            for (NetherMapView view : inNether ? NetherMapView.values() : new NetherMapView[]{NetherMapView.BEDROCK_SURFACE}) {
+                String mapDimension = view.storageDimension(dimension);
+                int[] colors = ClientMapColorExtractor.extract(chunk, view);
+                receiveLocalUpdate(mapDimension, chunkX, chunkZ, colors);
+                ClientMapStorage.saveChunk(mapDimension, chunkX, chunkZ, colors,
+                    getExplorers(mapDimension, chunkX, chunkZ));
 
-            if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
-                ClientPlayNetworking.send(new MapColorReportPayload(dimension, chunkX, chunkZ, colors));
+                if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
+                    ClientPlayNetworking.send(new MapColorReportPayload(mapDimension, chunkX, chunkZ, colors));
+                }
             }
         }
     }

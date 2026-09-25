@@ -1,6 +1,7 @@
 package com.runterya.worldmap.client;
 
 import com.runterya.worldmap.backend.MapColorExtractor;
+import com.runterya.worldmap.backend.NetherMapView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -27,9 +28,14 @@ public final class ClientMapColorExtractor {
     private ClientMapColorExtractor() {}
 
     public static int[] extract(LevelChunk chunk) {
+        return extract(chunk, NetherMapView.BEDROCK_SURFACE);
+    }
+
+    public static int[] extract(LevelChunk chunk, NetherMapView mapView) {
         var level = Minecraft.getInstance().level;
         if (level == null) {
-            return MapColorExtractor.extract(chunk);
+            return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> -1,
+                (state, pos) -> -1, mapView == NetherMapView.MID_LEVEL);
         }
 
         return MapColorExtractor.extract(chunk, (ignoredChunk, pos, state, mapColor) -> {
@@ -40,7 +46,7 @@ public final class ClientMapColorExtractor {
             }
             BlockTintSource tintSource = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
             return tintSource == null ? -1 : tintSource.colorInWorld(state, level, pos);
-        }, ClientMapColorExtractor::averageTopTextureColor);
+        }, ClientMapColorExtractor::averageTopTextureColor, mapView == NetherMapView.MID_LEVEL);
     }
 
     private static int averageTopTextureColor(BlockState state, BlockPos pos) {

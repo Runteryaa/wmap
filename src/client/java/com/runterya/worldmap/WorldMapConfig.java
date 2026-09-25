@@ -2,6 +2,7 @@ package com.runterya.worldmap;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.runterya.worldmap.backend.NetherMapView;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.Reader;
@@ -26,6 +27,7 @@ public final class WorldMapConfig {
     private static boolean showPlayers = true;
     private static boolean showWaypoints = true;
     private static boolean showExploredAreas = true;
+    private static NetherMapView netherMapView = NetherMapView.BEDROCK_SURFACE;
 
     private WorldMapConfig() {}
 
@@ -61,6 +63,13 @@ public final class WorldMapConfig {
             }
             if (config.has("showExploredAreas") && config.get("showExploredAreas").isJsonPrimitive()) {
                 showExploredAreas = config.get("showExploredAreas").getAsBoolean();
+            }
+            if (config.has("netherMapView") && config.get("netherMapView").isJsonPrimitive()) {
+                try {
+                    netherMapView = NetherMapView.valueOf(config.get("netherMapView").getAsString());
+                } catch (IllegalArgumentException ignored) {
+                    netherMapView = NetherMapView.BEDROCK_SURFACE;
+                }
             }
         } catch (Exception exception) {
             WorldMapMod.LOGGER.warn("Could not read worldmap.json; using default client settings", exception);
@@ -128,6 +137,16 @@ public final class WorldMapConfig {
         return showExploredAreas;
     }
 
+    public static NetherMapView netherMapView() {
+        return netherMapView;
+    }
+
+    public static void toggleNetherMapView() {
+        netherMapView = netherMapView == NetherMapView.BEDROCK_SURFACE
+            ? NetherMapView.MID_LEVEL : NetherMapView.BEDROCK_SURFACE;
+        save();
+    }
+
     public static void toggleShowExploredAreas() {
         showExploredAreas = !showExploredAreas;
         save();
@@ -145,6 +164,7 @@ public final class WorldMapConfig {
             config.addProperty("showPlayers", showPlayers);
             config.addProperty("showWaypoints", showWaypoints);
             config.addProperty("showExploredAreas", showExploredAreas);
+            config.addProperty("netherMapView", netherMapView.name());
             try (Writer writer = Files.newBufferedWriter(CONFIG_FILE)) {
                 com.google.gson.GsonBuilder gson = new com.google.gson.GsonBuilder().setPrettyPrinting();
                 gson.create().toJson(config, writer);
