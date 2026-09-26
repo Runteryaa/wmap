@@ -2,6 +2,7 @@ package com.runterya.worldmap;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.runterya.worldmap.backend.LayeredDimensions;
 import com.runterya.worldmap.backend.NetherMapView;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -196,6 +197,12 @@ public final class WorldMapConfig {
         int requestedY = autoNetherLayer || selectedNetherLayerY == Integer.MIN_VALUE
             ? playerY : selectedNetherLayerY;
         return NetherMapView.getPlayerLayerY(requestedY, minY, maxY);
+    }
+
+    public static int selectedNetherLayerY(String dimension, int minY, int maxY, int playerY) {
+        int requestedY = autoNetherLayer || selectedNetherLayerY == Integer.MIN_VALUE
+            ? playerY : selectedNetherLayerY;
+        return LayeredDimensions.clampLayerY(dimension, requestedY, minY, maxY);
     }
 
     public static boolean isNetherLayerAuto() {

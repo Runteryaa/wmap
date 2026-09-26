@@ -60,6 +60,7 @@ public class WorldMapScreen extends Screen {
     private boolean dimensionPickerOpen;
     private int dimensionPickerOffset;
     private boolean itemPickerOpen;
+    private boolean itemPickerSearchFocused;
     private String itemPickerSearch = "";
     private int itemPickerScrollRow;
     private String selectedSearchItem = "";
@@ -172,6 +173,7 @@ public class WorldMapScreen extends Screen {
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
         drawPlayerNameSuggestion(graphics, mouseX, mouseY, currentDim);
         // Render waypoints in screen space
+        com.runterya.worldmap.client.waypoint.Waypoint hoveredWaypoint = null;
         if (WorldMapConfig.showWaypoints()) {
             for (com.runterya.worldmap.client.waypoint.Waypoint wp : com.runterya.worldmap.client.waypoint.WaypointManager.getWaypoints()) {
                 if (!wp.getDimension().equals(currentDim)) continue;
@@ -190,10 +192,9 @@ public class WorldMapScreen extends Screen {
                 int sy = (int) Math.round(screenY);
                 drawWaypointMarker(graphics, wp, sx, sy);
 
-                // Draw name centered above if hovered
+                // Keep hover details for the topmost layer so text remains legible.
                 if (mouseX >= sx - 7 && mouseX <= sx + 7 && mouseY >= sy - 7 && mouseY <= sy + 7) {
-                    String name = wp.getName();
-                    graphics.centeredText(font, name, sx, sy - 14, wp.getColor() | 0xFF000000);
+                    hoveredWaypoint = wp;
                 }
             }
         }
@@ -209,6 +210,10 @@ public class WorldMapScreen extends Screen {
         String coordText = Localization.text("map.coordinates", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
         graphics.fill(3, 3, font.width(coordText) + 8, font.lineHeight + 7, 0x99000000);
         graphics.text(font, coordText, 5, 5, 0xFFFFFFFF, true);
+
+        if (hoveredWaypoint != null) {
+            drawWaypointHoverTooltip(graphics, font, hoveredWaypoint, mouseX, mouseY);
+        }
 
         drawWaypointSearchResults(graphics, mouseX, mouseY, currentDim);
         if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
@@ -353,28 +358,42 @@ public class WorldMapScreen extends Screen {
             return Localization.component(NetherMapView.NETHER_DIMENSION.equals(dimension)
                 ? "map.nether_bedrock_top" : "map.layered_surface");
         }
+        int layerY = selectedLayerYForDimension(dimension);
+        return Localization.component(NetherMapView.NETHER_DIMENSION.equals(dimension)
+            ? "map.nether_layer_y" : "map.layered_layer_y", layerY);
+    }
+
+    /** Auto follows the player's height in their current dimension. When browsing another
+     * layered dimension, use the highest slice that already contains map data. */
+    private static int selectedLayerYForDimension(String dimension) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
             && minecraft.level.dimension().identifier().toString().equals(dimension);
         int minY = playerInSelectedDimension ? minecraft.level.getMinY() : -64;
         int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
+
+        if (WorldMapConfig.isNetherLayerAuto() && !playerInSelectedDimension) {
+            int highestAllowedLayer = LayeredDimensions.getMaxLayerY(dimension, minY, maxY);
+            int highestMappedLayer = ClientMapManager.getKnownDimensions().stream()
+                .filter(NetherMapView::isCaveLayerDimension)
+                .filter(storageDimension -> NetherMapView.gameDimension(storageDimension).equals(dimension))
+                .filter(storageDimension -> !ClientMapManager.getRegions(storageDimension).isEmpty())
+                .mapToInt(NetherMapView::getCaveLayerY)
+                .filter(layerY -> layerY != Integer.MIN_VALUE && layerY <= highestAllowedLayer)
+                .max()
+                .orElse(Integer.MIN_VALUE);
+            if (highestMappedLayer != Integer.MIN_VALUE) return highestMappedLayer;
+            return highestAllowedLayer;
+        }
+
         int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
-        int layerY = WorldMapConfig.selectedNetherLayerY(minY, maxY, playerY);
-        return Localization.component(NetherMapView.NETHER_DIMENSION.equals(dimension)
-            ? "map.nether_layer_y" : "map.layered_layer_y", layerY);
+        return WorldMapConfig.selectedNetherLayerY(dimension, minY, maxY, playerY);
     }
 
     private static String currentMapDimension(String currentDimension) {
         NetherMapView view = WorldMapConfig.netherMapView();
         if (view == NetherMapView.CAVE_LAYER && isNetherStyleDimension(currentDimension)) {
-            Minecraft minecraft = Minecraft.getInstance();
-            boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
-                && minecraft.level.dimension().identifier().toString().equals(currentDimension);
-            int minY = playerInSelectedDimension ? minecraft.level.getMinY() : -64;
-            int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
-            int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
-            int layerY = WorldMapConfig.selectedNetherLayerY(
-                minY, maxY, playerY);
+            int layerY = selectedLayerYForDimension(currentDimension);
             return view.storageDimension(currentDimension, layerY);
         }
         // The cave-layer preference only applies to dimensions explicitly opted in.
@@ -518,6 +537,7 @@ public class WorldMapScreen extends Screen {
         this.itemPickerSearch = "";
         this.itemPickerScrollRow = 0;
         this.itemPickerOpen = true;
+        this.itemPickerSearchFocused = true;
     }
 
     private void filterWaypointItems() {
@@ -538,6 +558,7 @@ public class WorldMapScreen extends Screen {
         }
         this.searchScrollOffset = 0;
         this.itemPickerOpen = false;
+        this.itemPickerSearchFocused = false;
     }
 
     private void drawWaypointSearchResults(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -631,7 +652,8 @@ public class WorldMapScreen extends Screen {
         graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
         String visibleSearch = this.itemPickerSearch.length() > 34
             ? this.itemPickerSearch.substring(this.itemPickerSearch.length() - 34) : this.itemPickerSearch;
-        graphics.text(this.font, visibleSearch.isEmpty() ? Localization.text("map.search_items_by_name") : visibleSearch + "|",
+        graphics.text(this.font, visibleSearch.isEmpty() ? Localization.text("map.search_items_by_name")
+                : visibleSearch + (this.itemPickerSearchFocused ? "|" : ""),
             panelX + 14, panelY + 31, visibleSearch.isEmpty() ? 0xFF888888 : 0xFFFFFFFF);
         graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
         graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
@@ -659,9 +681,16 @@ public class WorldMapScreen extends Screen {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return true;
         int panelX = Math.max(8, (this.width - 290) / 2);
         int panelY = Math.max(8, (this.height - 238) / 2);
-        if (event.x() >= panelX + 258 && event.x() <= panelX + 282
-            && event.y() >= panelY + 7 && event.y() <= panelY + 27) {
-            this.itemPickerOpen = false;
+        if (event.x() >= panelX + 260 && event.x() < panelX + 282
+            && event.y() >= panelY + 25 && event.y() < panelY + 45) {
+            this.itemPickerSearch = "";
+            filterWaypointItems();
+            this.itemPickerSearchFocused = true;
+            return true;
+        }
+        if (event.x() >= panelX + 9 && event.x() < panelX + 254
+            && event.y() >= panelY + 25 && event.y() < panelY + 45) {
+            this.itemPickerSearchFocused = true;
             return true;
         }
         int gridX = panelX + 18;
@@ -689,14 +718,17 @@ public class WorldMapScreen extends Screen {
         if (!this.itemPickerOpen) return super.keyPressed(event);
         if (event.key() == InputConstants.KEY_ESCAPE) {
             this.itemPickerOpen = false;
+            this.itemPickerSearchFocused = false;
             return true;
         }
-        if (event.key() == InputConstants.KEY_BACKSPACE && !this.itemPickerSearch.isEmpty()) {
+        if (event.key() == InputConstants.KEY_BACKSPACE && this.itemPickerSearchFocused
+            && !this.itemPickerSearch.isEmpty()) {
             int end = this.itemPickerSearch.offsetByCodePoints(this.itemPickerSearch.length(), -1);
             this.itemPickerSearch = this.itemPickerSearch.substring(0, end);
             filterWaypointItems();
             return true;
         }
+        if (event.key() == InputConstants.KEY_BACKSPACE && this.itemPickerSearchFocused) return true;
         if (event.key() == InputConstants.KEY_RETURN) {
             selectWaypointSearchItem(0);
             return true;
@@ -707,7 +739,7 @@ public class WorldMapScreen extends Screen {
     @Override
     public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
         if (!this.itemPickerOpen) return super.charTyped(event);
-        if (event.isAllowedChatCharacter()
+        if (this.itemPickerSearchFocused && event.isAllowedChatCharacter()
             && this.itemPickerSearch.codePointCount(0, this.itemPickerSearch.length()) < 48) {
             this.itemPickerSearch += event.codepointAsString();
             filterWaypointItems();
@@ -807,6 +839,76 @@ public class WorldMapScreen extends Screen {
                 graphics.pose().popMatrix();
             }
         }
+    }
+
+    private void drawWaypointHoverTooltip(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                          net.minecraft.client.gui.Font font,
+                                          com.runterya.worldmap.client.waypoint.Waypoint waypoint,
+                                          int mouseX, int mouseY) {
+        int maxTextWidth = Math.min(240, Math.max(80, this.width - 16));
+        List<String> lines = new ArrayList<>();
+        lines.add(waypoint.getName());
+        if (!waypoint.getCategory().isBlank()) {
+            lines.add(Localization.text("waypoint_menu.category", waypoint.getCategory()));
+        }
+        if (!waypoint.getNote().isBlank()) {
+            lines.addAll(wrapTooltipText(
+                Localization.text("waypoint_menu.note", waypoint.getNote()), font, maxTextWidth));
+        }
+
+        int textWidth = lines.stream().mapToInt(font::width).max().orElse(0);
+        int boxWidth = Math.min(maxTextWidth + 8, textWidth + 8);
+        int boxHeight = lines.size() * (font.lineHeight + 2) + 6;
+        int boxX = mouseX + 12;
+        int boxY = mouseY + 12;
+        if (boxX + boxWidth > this.width - 4) boxX = mouseX - boxWidth - 12;
+        if (boxY + boxHeight > this.height - 4) boxY = mouseY - boxHeight - 12;
+        boxX = Math.max(4, boxX);
+        boxY = Math.max(4, boxY);
+
+        graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE0101010);
+        graphics.outline(boxX, boxY, boxWidth, boxHeight, 0xFF777777);
+        int textY = boxY + 4;
+        for (int index = 0; index < lines.size(); index++) {
+            graphics.text(font, lines.get(index), boxX + 4, textY,
+                index == 0 ? 0xFFFFFFFF : 0xFFD0D0D0);
+            textY += font.lineHeight + 2;
+        }
+    }
+
+    private static List<String> wrapTooltipText(String text, net.minecraft.client.gui.Font font, int maxWidth) {
+        List<String> wrapped = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split("\\s+")) {
+            if (font.width(word) > maxWidth) {
+                if (!line.isEmpty()) {
+                    wrapped.add(line.toString());
+                    line.setLength(0);
+                }
+                StringBuilder segment = new StringBuilder();
+                for (int index = 0; index < word.length(); index++) {
+                    char character = word.charAt(index);
+                    if (!segment.isEmpty() && font.width(segment.toString() + character) > maxWidth) {
+                        wrapped.add(segment.toString());
+                        segment.setLength(0);
+                    }
+                    segment.append(character);
+                }
+                if (!segment.isEmpty()) line.append(segment);
+                continue;
+            }
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && font.width(candidate) > maxWidth) {
+                wrapped.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            } else {
+                if (!line.isEmpty()) line.append(' ');
+                line.append(word);
+            }
+        }
+        if (!line.isEmpty()) wrapped.add(line.toString());
+        return wrapped;
     }
 
     private void drawOtherPlayer(net.minecraft.client.gui.GuiGraphicsExtractor graphics,

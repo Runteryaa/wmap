@@ -177,7 +177,9 @@ public class WorldMapServer {
                     int minY = context.player().level().getMinY();
                     int maxY = context.player().level().getMaxY();
                     if (!LayeredDimensions.contains(context.player().level())
-                        || layerY < minY || layerY >= maxY || Math.floorMod(layerY, NetherMapView.CAVE_LAYER_STEP) != 0) {
+                        || layerY < minY || layerY >= maxY
+                        || layerY > LayeredDimensions.getMaxLayerY(playerDimension, minY, maxY)
+                        || Math.floorMod(layerY, NetherMapView.CAVE_LAYER_STEP) != 0) {
                         return;
                     }
                 }
@@ -339,12 +341,12 @@ public class WorldMapServer {
                 String dimension = player.level().dimension().identifier().toString();
                 java.util.List<String> mapDimensions;
                 if (LayeredDimensions.contains(player.level())) {
-                    int centerLayerY = NetherMapView.getPlayerLayerY(player.blockPosition().getY(),
+                    int centerLayerY = NetherMapView.getPlayerLayerY(dimension, player.blockPosition().getY(),
                         player.level().getMinY(), player.level().getMaxY());
                     java.util.LinkedHashSet<String> nearbyLayerDimensions = new java.util.LinkedHashSet<>();
                     nearbyLayerDimensions.add(NetherMapView.BEDROCK_SURFACE.storageDimension(dimension));
                     for (int offset : new int[] {0, -1, 1, -2, 2, -3, 3}) {
-                        int layerY = NetherMapView.getNearbyPlayerLayerY(centerLayerY, offset,
+                        int layerY = NetherMapView.getNearbyPlayerLayerY(dimension, centerLayerY, offset,
                             player.level().getMinY(), player.level().getMaxY());
                         nearbyLayerDimensions.add(NetherMapView.CAVE_LAYER.storageDimension(dimension, layerY));
                     }
@@ -361,7 +363,8 @@ public class WorldMapServer {
         );
         nearby.sort(Comparator.<SyncChunk>comparingInt(chunk -> mapDimensionPriority(chunk.dimension(),
                 player.level().dimension().identifier().toString(),
-                NetherMapView.getPlayerLayerY(player.blockPosition().getY(), player.level().getMinY(), player.level().getMaxY())))
+                NetherMapView.getPlayerLayerY(player.level().dimension().identifier().toString(),
+                    player.blockPosition().getY(), player.level().getMinY(), player.level().getMaxY())))
             .thenComparingLong(chunk -> squaredDistance(chunk.chunkX(), chunk.chunkZ(),
                 player.chunkPosition().x(), player.chunkPosition().z())));
         transfer.addFirst(nearby);
@@ -389,7 +392,8 @@ public class WorldMapServer {
         int playerChunkX = player.chunkPosition().x();
         int playerChunkZ = player.chunkPosition().z();
         int playerLayerY = LayeredDimensions.contains(player.level())
-            ? NetherMapView.getPlayerLayerY(player.blockPosition().getY(), player.level().getMinY(), player.level().getMaxY())
+            ? NetherMapView.getPlayerLayerY(dimension, player.blockPosition().getY(),
+                player.level().getMinY(), player.level().getMaxY())
             : Integer.MIN_VALUE;
         ioExecutor.submit(() -> {
             List<SyncChunk> discovered = activeStorage.getDiscoveredChunks().stream()

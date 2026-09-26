@@ -18,12 +18,23 @@ public enum NetherMapView {
         return Math.max(minLayer, Math.min(maxLayer, layerY));
     }
 
+    /** Quantize the player's height while respecting any per-dimension top-layer cap. */
+    public static int getPlayerLayerY(String dimension, int playerY, int minY, int maxY) {
+        return LayeredDimensions.clampLayerY(dimension, playerY, minY, maxY);
+    }
+
     /** Get a neighboring layer while keeping it on the dimension's 8-block grid. */
     public static int getNearbyPlayerLayerY(int centerLayerY, int offset, int minY, int maxY) {
         int minLayer = -Math.floorDiv(-minY, CAVE_LAYER_STEP) * CAVE_LAYER_STEP;
         int maxLayer = Math.floorDiv(maxY - 1, CAVE_LAYER_STEP) * CAVE_LAYER_STEP;
         int layerY = centerLayerY + offset * CAVE_LAYER_STEP;
         return Math.max(minLayer, Math.min(maxLayer, layerY));
+    }
+
+    /** Get a neighboring slice without crossing a dimension's configured top layer. */
+    public static int getNearbyPlayerLayerY(String dimension, int centerLayerY, int offset, int minY, int maxY) {
+        return LayeredDimensions.clampLayerY(dimension,
+            getNearbyPlayerLayerY(centerLayerY, offset, minY, maxY), minY, maxY);
     }
 
     public String storageDimension(String dimension) {

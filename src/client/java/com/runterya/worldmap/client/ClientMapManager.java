@@ -111,7 +111,8 @@ public class ClientMapManager {
         Minecraft minecraft = Minecraft.getInstance();
         int currentNetherLayerY = minecraft.level != null && minecraft.player != null
             && LayeredDimensions.contains(minecraft.level)
-                ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
+                ? NetherMapView.getPlayerLayerY(minecraft.level.dimension().identifier().toString(),
+                    minecraft.player.blockPosition().getY(),
                     minecraft.level.getMinY(), minecraft.level.getMaxY())
                 : Integer.MIN_VALUE;
         if (currentNetherLayerY != Integer.MIN_VALUE && lastNetherLayerY != currentNetherLayerY) {
@@ -131,18 +132,18 @@ public class ClientMapManager {
             String dimension = minecraft.level.dimension().identifier().toString();
             boolean inNether = LayeredDimensions.contains(minecraft.level);
             int centerLayerY = inNether && minecraft.player != null
-                ? NetherMapView.getPlayerLayerY(minecraft.player.blockPosition().getY(),
+                ? NetherMapView.getPlayerLayerY(dimension, minecraft.player.blockPosition().getY(),
                     minecraft.level.getMinY(), minecraft.level.getMaxY())
                 : 40;
             saveChunkView(chunk, NetherMapView.BEDROCK_SURFACE, dimension, 0);
             if (inNether) {
                 java.util.Set<Integer> nearbyLayers = new java.util.LinkedHashSet<>();
                 for (int offset = -3; offset <= 3; offset++) {
-                    nearbyLayers.add(NetherMapView.getNearbyPlayerLayerY(centerLayerY, offset,
+                    nearbyLayers.add(NetherMapView.getNearbyPlayerLayerY(dimension, centerLayerY, offset,
                         minecraft.level.getMinY(), minecraft.level.getMaxY()));
                 }
                 if (WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER) {
-                    nearbyLayers.add(WorldMapConfig.selectedNetherLayerY(
+                    nearbyLayers.add(WorldMapConfig.selectedNetherLayerY(dimension,
                         minecraft.level.getMinY(), minecraft.level.getMaxY(), centerLayerY));
                 }
                 for (int layerY : nearbyLayers) {

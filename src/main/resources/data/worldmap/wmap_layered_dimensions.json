@@ -1,3 +1,6 @@
 [
-  "minecraft:the_nether"
+  {
+    "id": "minecraft:the_nether",
+    "max_layer_y": 127
+  }
 ]

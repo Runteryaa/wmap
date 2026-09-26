@@ -1,6 +1,7 @@
 package com.runterya.worldmap.gui;
 
 import com.runterya.worldmap.WorldMapConfig;
+import com.runterya.worldmap.backend.LayeredDimensions;
 import com.runterya.worldmap.backend.NetherMapView;
 import com.runterya.worldmap.client.ClientPlatform;
 import net.minecraft.client.Minecraft;
@@ -35,8 +36,8 @@ public final class NetherLayerSelectionScreen extends Screen {
 
         int minLayerY = NetherMapView.getPlayerLayerY(
             this.minY, this.minY, this.maxY);
-        int maxLayerY = NetherMapView.getPlayerLayerY(
-            this.maxY - 1, this.minY, this.maxY);
+        int maxLayerY = LayeredDimensions.getMaxLayerY(
+            this.selectedDimension, this.minY, this.maxY);
         int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
         int itemCount = layerCount + 2;
         int rows = (itemCount + COLUMNS - 1) / COLUMNS;
@@ -68,7 +69,7 @@ public final class NetherLayerSelectionScreen extends Screen {
         }).bounds(gridLeft + cellWidth + cellGap, gridTop, cellWidth, 20).build());
 
         int selectedLayerY = WorldMapConfig.selectedNetherLayerY(
-            this.minY, this.maxY, minecraft.level != null
+            this.selectedDimension, this.minY, this.maxY, minecraft.level != null
                 && minecraft.level.dimension().identifier().toString().equals(this.selectedDimension)
                 ? minecraft.player.blockPosition().getY() : 40);
         for (int layerY = minLayerY; layerY <= maxLayerY; layerY += NetherMapView.CAVE_LAYER_STEP) {
@@ -98,8 +99,8 @@ public final class NetherLayerSelectionScreen extends Screen {
         int panelWidth = Math.min(470, this.width - 24);
         int minLayerY = NetherMapView.getPlayerLayerY(
             this.minY, this.minY, this.maxY);
-        int maxLayerY = NetherMapView.getPlayerLayerY(
-            this.maxY - 1, this.minY, this.maxY);
+        int maxLayerY = LayeredDimensions.getMaxLayerY(
+            this.selectedDimension, this.minY, this.maxY);
         int layerCount = (maxLayerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP + 1;
         int rows = (layerCount + 2 + COLUMNS - 1) / COLUMNS;
         int panelHeight = 64 + rows * CELL_HEIGHT + 34;

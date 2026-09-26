@@ -464,7 +464,8 @@ public class ClientMapStorage {
         int centerChunkX = mc.player == null ? 0 : mc.player.chunkPosition().x();
         int centerChunkZ = mc.player == null ? 0 : mc.player.chunkPosition().z();
         int activeLayerY = mc.level != null && LayeredDimensions.contains(mc.level) && mc.player != null
-            ? NetherMapView.getPlayerLayerY(mc.player.blockPosition().getY(), mc.level.getMinY(), mc.level.getMaxY())
+            ? NetherMapView.getPlayerLayerY(mc.level.dimension().identifier().toString(),
+                mc.player.blockPosition().getY(), mc.level.getMinY(), mc.level.getMaxY())
             : Integer.MIN_VALUE;
         UUID singleplayerOwner = mc.getSingleplayerServer() != null && mc.player != null
             ? mc.player.getUUID() : null;
