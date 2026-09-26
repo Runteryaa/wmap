@@ -24,7 +24,7 @@ public final class PlayerContextMenuScreen extends Screen {
         Minecraft minecraft = this.minecraft;
         boolean canTeleport = TeleportPermissions.canTeleport(minecraft);
         if (canTeleport) {
-            this.addRenderableWidget(Button.builder(Component.literal("Teleport to " + this.player.name()), button -> {
+            this.addRenderableWidget(Button.builder(Localization.component("player_menu.teleport", this.player.name()), button -> {
                 Minecraft currentMinecraft = this.minecraft;
                 if (TeleportPermissions.canTeleport(currentMinecraft)) {
                     currentMinecraft.player.connection.sendCommand("tp @s " + this.player.name());
@@ -32,7 +32,7 @@ public final class PlayerContextMenuScreen extends Screen {
                 }
             }).bounds(centerX - 110, top, 220, 20).build());
         }
-        this.addRenderableWidget(Button.builder(Component.literal("Back"), button ->
+        this.addRenderableWidget(Button.builder(Localization.component("waypoint_menu.back"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
         ).bounds(centerX - 110, top + (canTeleport ? 24 : 0), 220, 20).build());
     }

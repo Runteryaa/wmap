@@ -23,14 +23,16 @@ public final class WorldMapConfigScreen extends Screen {
     private static final int PLAYER_PICKER_HEIGHT = 220;
     private static final int PLAYER_PICKER_ROW_HEIGHT = 22;
     private static final int PLAYER_PICKER_VISIBLE_ROWS = 6;
-    private static final int SETTINGS_CONTENT_BOTTOM = 398;
+    private static final int SETTINGS_CONTENT_BOTTOM = 548;
     private final Screen parent;
     private Button explorationFilterButton;
     private Button explorerSelectButton;
     private Button waypointActionButton;
+    private Button languageButton;
     private Button exploredAreasButton;
     private Button playersButton;
     private Button waypointsButton;
+    private Button statisticsButton;
     private Button deleteAllWaypointsButton;
     private Button doneButton;
     private boolean playerPickerOpen;
@@ -39,7 +41,7 @@ public final class WorldMapConfigScreen extends Screen {
     private int settingsScroll;
 
     public WorldMapConfigScreen(Screen parent) {
-        super(Component.literal("WorldMap Settings"));
+        super(Localization.component("settings.title"));
         this.parent = parent;
     }
 
@@ -58,36 +60,45 @@ public final class WorldMapConfigScreen extends Screen {
             button.setMessage(toggleLabel());
         }).bounds(buttonLeft, panelTop + 94 - this.settingsScroll, buttonWidth, 22).build());
 
+        this.languageButton = this.addRenderableWidget(Button.builder(languageLabel(), button -> {
+            WorldMapConfig.cycleLanguagePreference();
+            refreshLocalizedWidgets();
+        }).bounds(buttonLeft, panelTop + 164 - this.settingsScroll, buttonWidth, 22).build());
+
         this.exploredAreasButton = this.addRenderableWidget(Button.builder(exploredAreasLabel(), button -> {
             WorldMapConfig.toggleShowExploredAreas();
             button.setMessage(exploredAreasLabel());
-        }).bounds(buttonLeft, panelTop + 164 - this.settingsScroll, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 234 - this.settingsScroll, buttonWidth, 22).build());
 
         this.explorationFilterButton = this.addRenderableWidget(Button.builder(explorationFilterLabel(), button -> {
             WorldMapConfig.cycleMapLayer();
             button.setMessage(explorationFilterLabel());
-        }).bounds(buttonLeft, panelTop + 190 - this.settingsScroll, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 260 - this.settingsScroll, buttonWidth, 22).build());
 
         this.explorerSelectButton = this.addRenderableWidget(Button.builder(explorerSelectLabel(), button -> {
             this.playerPickerScroll = 0;
             this.playerPickerOpen = true;
-        }).bounds(buttonLeft, panelTop + 216 - this.settingsScroll, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 286 - this.settingsScroll, buttonWidth, 22).build());
 
         this.playersButton = this.addRenderableWidget(Button.builder(playersLabel(), button -> {
             WorldMapConfig.toggleShowPlayers();
             button.setMessage(playersLabel());
-        }).bounds(buttonLeft, panelTop + 286 - this.settingsScroll, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 356 - this.settingsScroll, buttonWidth, 22).build());
 
         this.waypointsButton = this.addRenderableWidget(Button.builder(waypointsLabel(), button -> {
             WorldMapConfig.toggleShowWaypoints();
             button.setMessage(waypointsLabel());
-        }).bounds(buttonLeft, panelTop + 312 - this.settingsScroll, buttonWidth, 22).build());
+        }).bounds(buttonLeft, panelTop + 382 - this.settingsScroll, buttonWidth, 22).build());
+
+        this.statisticsButton = this.addRenderableWidget(Button.builder(Localization.component("settings.statistics"), button ->
+            com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, new ExplorationStatsScreen(this))
+        ).bounds(buttonLeft, panelTop + 450 - this.settingsScroll, buttonWidth, 22).build());
 
         this.deleteAllWaypointsButton = this.addRenderableWidget(Button.builder(
-            Component.literal("Delete all my waypoints"), button -> this.confirmingBulkDelete = true
-        ).bounds(buttonLeft, panelTop + 370 - this.settingsScroll, buttonWidth, 22).build());
+            Localization.component("settings.delete_waypoints"), button -> this.confirmingBulkDelete = true
+        ).bounds(buttonLeft, panelTop + 520 - this.settingsScroll, buttonWidth, 22).build());
 
-        this.doneButton = this.addRenderableWidget(Button.builder(Component.literal("Done"), button -> closeSettings())
+        this.doneButton = this.addRenderableWidget(Button.builder(Localization.component("settings.done"), button -> closeSettings())
             .bounds(this.width / 2 - 100, panelTop + panelHeight - 32, 200, 22).build());
     }
 
@@ -100,8 +111,8 @@ public final class WorldMapConfigScreen extends Screen {
         int panelTop = (this.height - panelHeight) / 2;
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xE0181A20);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF777777);
-        graphics.centeredText(this.font, "WorldMap Settings", this.width / 2, panelTop + 12, 0xFFFFFFFF);
-        graphics.centeredText(this.font, "Customize map controls and shared exploration",
+        graphics.centeredText(this.font, Localization.text("settings.title"), this.width / 2, panelTop + 12, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("settings.subtitle"),
             this.width / 2, panelTop + 31, 0xFFB8B8B8);
         graphics.fill(panelLeft + 16, panelTop + 52, panelLeft + panelWidth - 16, panelTop + 53, 0xFF55555F);
 
@@ -109,18 +120,24 @@ public final class WorldMapConfigScreen extends Screen {
         int contentBottom = panelTop + panelHeight - 40;
         graphics.enableScissor(panelLeft + 8, contentTop, panelLeft + panelWidth - 8, contentBottom);
         int offset = this.settingsScroll;
-        graphics.text(this.font, "Controls", panelLeft + 18, panelTop + 63 - offset, 0xFFFFFFFF, true);
-        graphics.text(this.font, "Choose what B does while you look at a waypoint.",
+        graphics.text(this.font, Localization.text("settings.controls"), panelLeft + 18, panelTop + 63 - offset, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("settings.controls_description"),
             panelLeft + 18, panelTop + 78 - offset, 0xFFB8B8B8, true);
-        graphics.text(this.font, "Shared map", panelLeft + 18, panelTop + 132 - offset, 0xFFFFFFFF, true);
-        graphics.text(this.font, "Choose which discovered chunks appear on the shared map.",
+        graphics.text(this.font, Localization.text("settings.language_heading"), panelLeft + 18, panelTop + 132 - offset, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("settings.language_description"),
             panelLeft + 18, panelTop + 147 - offset, 0xFFB8B8B8, true);
-        graphics.text(this.font, "Layers", panelLeft + 18, panelTop + 252 - offset, 0xFFFFFFFF, true);
-        graphics.text(this.font, "Choose which markers are visible on the map.",
-            panelLeft + 18, panelTop + 267 - offset, 0xFFB8B8B8, true);
-        graphics.text(this.font, "Delete waypoints", panelLeft + 18, panelTop + 338 - offset, 0xFFFF9999, true);
-        graphics.text(this.font, "Permanently delete your local and public waypoints.",
-            panelLeft + 18, panelTop + 353 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, Localization.text("settings.shared_map"), panelLeft + 18, panelTop + 202 - offset, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("settings.shared_map_description"),
+            panelLeft + 18, panelTop + 217 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, Localization.text("settings.layers"), panelLeft + 18, panelTop + 322 - offset, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("settings.layers_description"),
+            panelLeft + 18, panelTop + 337 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, Localization.text("settings.statistics"), panelLeft + 18, panelTop + 418 - offset, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("settings.statistics_description"),
+            panelLeft + 18, panelTop + 433 - offset, 0xFFB8B8B8, true);
+        graphics.text(this.font, Localization.text("settings.delete_waypoints"), panelLeft + 18, panelTop + 488 - offset, 0xFFFF9999, true);
+        graphics.text(this.font, Localization.text("settings.delete_waypoints_description"),
+            panelLeft + 18, panelTop + 503 - offset, 0xFFB8B8B8, true);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         graphics.disableScissor();
         this.doneButton.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -143,31 +160,51 @@ public final class WorldMapConfigScreen extends Screen {
         int buttonLeft = panelLeft + 18;
         int buttonWidth = panelWidth - 36;
         this.waypointActionButton.setY(panelTop + 94 - this.settingsScroll);
-        this.exploredAreasButton.setY(panelTop + 164 - this.settingsScroll);
-        this.explorationFilterButton.setY(panelTop + 190 - this.settingsScroll);
-        this.explorerSelectButton.setY(panelTop + 216 - this.settingsScroll);
-        this.playersButton.setY(panelTop + 286 - this.settingsScroll);
-        this.waypointsButton.setY(panelTop + 312 - this.settingsScroll);
-        this.deleteAllWaypointsButton.setY(panelTop + 370 - this.settingsScroll);
+        this.languageButton.setY(panelTop + 164 - this.settingsScroll);
+        this.exploredAreasButton.setY(panelTop + 234 - this.settingsScroll);
+        this.explorationFilterButton.setY(panelTop + 260 - this.settingsScroll);
+        this.explorerSelectButton.setY(panelTop + 286 - this.settingsScroll);
+        this.playersButton.setY(panelTop + 356 - this.settingsScroll);
+        this.waypointsButton.setY(panelTop + 382 - this.settingsScroll);
+        this.statisticsButton.setY(panelTop + 450 - this.settingsScroll);
+        this.deleteAllWaypointsButton.setY(panelTop + 520 - this.settingsScroll);
         this.doneButton.setY(panelTop + panelHeight() - 32);
         this.waypointActionButton.setX(buttonLeft);
+        this.languageButton.setX(buttonLeft);
         this.exploredAreasButton.setX(buttonLeft);
         this.explorationFilterButton.setX(buttonLeft);
         this.explorerSelectButton.setX(buttonLeft);
         this.playersButton.setX(buttonLeft);
         this.waypointsButton.setX(buttonLeft);
+        this.statisticsButton.setX(buttonLeft);
         this.waypointActionButton.setWidth(buttonWidth);
         this.exploredAreasButton.setWidth(buttonWidth);
         this.explorationFilterButton.setWidth(buttonWidth);
         this.explorerSelectButton.setWidth(buttonWidth);
         this.playersButton.setWidth(buttonWidth);
         this.waypointsButton.setWidth(buttonWidth);
+        this.statisticsButton.setWidth(buttonWidth);
+        this.languageButton.setWidth(buttonWidth);
         this.deleteAllWaypointsButton.setX(buttonLeft);
         this.deleteAllWaypointsButton.setWidth(buttonWidth);
     }
 
     private void closeSettings() {
+        if (this.parent instanceof WorldMapScreen mapScreen) mapScreen.refreshLocalization();
         com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
+    }
+
+    private void refreshLocalizedWidgets() {
+        this.languageButton.setMessage(languageLabel());
+        this.waypointActionButton.setMessage(toggleLabel());
+        this.exploredAreasButton.setMessage(exploredAreasLabel());
+        this.explorationFilterButton.setMessage(explorationFilterLabel());
+        this.explorerSelectButton.setMessage(explorerSelectLabel());
+        this.playersButton.setMessage(playersLabel());
+        this.waypointsButton.setMessage(waypointsLabel());
+        this.statisticsButton.setMessage(Localization.component("settings.statistics"));
+        this.deleteAllWaypointsButton.setMessage(Localization.component("settings.delete_waypoints"));
+        this.doneButton.setMessage(Localization.component("settings.done"));
     }
 
     private void drawBulkDeleteConfirmation(net.minecraft.client.gui.GuiGraphicsExtractor graphics) {
@@ -178,17 +215,17 @@ public final class WorldMapConfigScreen extends Screen {
         graphics.fill(0, 0, this.width, this.height, 0xAA000000);
         graphics.fill(left, top, left + modalWidth, top + modalHeight, 0xFF202027);
         graphics.outline(left, top, modalWidth, modalHeight, 0xFFAAAAAA);
-        graphics.centeredText(this.font, "Delete all your waypoints?", this.width / 2, top + 14, 0xFFFFFFFF);
-        graphics.centeredText(this.font, "This permanently deletes your local waypoints", this.width / 2,
+        graphics.centeredText(this.font, Localization.text("settings.confirm_delete_title"), this.width / 2, top + 14, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("settings.confirm_delete_local"), this.width / 2,
             top + 36, 0xFFCCCCCC);
-        graphics.centeredText(this.font, "and every public waypoint you created.", this.width / 2,
+        graphics.centeredText(this.font, Localization.text("settings.confirm_delete_public"), this.width / 2,
             top + 50, 0xFFCCCCCC);
         graphics.fill(left + 24, top + 76, left + 152, top + 102, 0xFF803737);
         graphics.outline(left + 24, top + 76, 128, 26, 0xFFB0B0B0);
-        graphics.centeredText(this.font, "Delete", left + 88, top + 85, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("settings.delete"), left + 88, top + 85, 0xFFFFFFFF);
         graphics.fill(left + 168, top + 76, left + 296, top + 102, 0xFF484854);
         graphics.outline(left + 168, top + 76, 128, 26, 0xFFB0B0B0);
-        graphics.centeredText(this.font, "Cancel", left + 232, top + 85, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("settings.cancel"), left + 232, top + 85, 0xFFFFFFFF);
     }
 
     private boolean handleBulkDeleteConfirmationClick(MouseButtonEvent event) {
@@ -200,7 +237,7 @@ public final class WorldMapConfigScreen extends Screen {
             && event.y() >= top + 76 && event.y() < top + 102) {
             com.runterya.worldmap.client.waypoint.WaypointManager.deleteAllOwnedWaypoints();
             if (this.minecraft.player != null) {
-                this.minecraft.player.sendSystemMessage(Component.literal("Your waypoints were deleted."));
+                this.minecraft.player.sendSystemMessage(Localization.component("settings.waypoints_deleted"));
             }
             this.confirmingBulkDelete = false;
             return true;
@@ -235,7 +272,7 @@ public final class WorldMapConfigScreen extends Screen {
         graphics.fill(0, 0, this.width, this.height, 0x99000000);
         graphics.fill(left, top, left + PLAYER_PICKER_WIDTH, top + PLAYER_PICKER_HEIGHT, 0xFF202020);
         graphics.outline(left, top, PLAYER_PICKER_WIDTH, PLAYER_PICKER_HEIGHT, 0xFFAAAAAA);
-        graphics.centeredText(this.font, "Choose map explorer", left + PLAYER_PICKER_WIDTH / 2, top + 10, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("settings.choose_map_explorer"), left + PLAYER_PICKER_WIDTH / 2, top + 10, 0xFFFFFFFF);
 
         List<PlayerPosPayload.PlayerPos> players = availableMapPlayers();
         int maxScroll = Math.max(0, players.size() - PLAYER_PICKER_VISIBLE_ROWS);
@@ -258,10 +295,10 @@ public final class WorldMapConfigScreen extends Screen {
             graphics.text(this.font, player.name(), left + 30, rowY + 6, 0xFFFFFFFF, true);
         }
         if (players.isEmpty()) {
-            graphics.centeredText(this.font, "No map users are connected", left + PLAYER_PICKER_WIDTH / 2,
+            graphics.centeredText(this.font, Localization.text("settings.no_map_users"), left + PLAYER_PICKER_WIDTH / 2,
                 top + 80, 0xFFB8B8B8);
         }
-        graphics.centeredText(this.font, "Cancel", left + PLAYER_PICKER_WIDTH / 2, top + 198, 0xFFCCCCCC);
+        graphics.centeredText(this.font, Localization.text("settings.cancel"), left + PLAYER_PICKER_WIDTH / 2, top + 198, 0xFFCCCCCC);
     }
 
     private boolean handlePlayerPickerClick(MouseButtonEvent event) {
@@ -291,40 +328,51 @@ public final class WorldMapConfigScreen extends Screen {
     }
 
     private static Component toggleLabel() {
-        return Component.literal("B while looking at a waypoint: "
-            + (WorldMapConfig.openWaypointActionsOnLook() ? "Waypoint actions" : "Add waypoint"));
+        return Localization.component("settings.waypoint_action", Localization.component(
+            WorldMapConfig.openWaypointActionsOnLook() ? "settings.action_waypoint" : "settings.action_add_waypoint"));
+    }
+
+    private static Component languageLabel() {
+        String languageKey = switch (WorldMapConfig.languagePreference()) {
+            case MINECRAFT -> "settings.language_minecraft";
+            case ENGLISH -> "settings.language_english";
+            case TURKISH -> "settings.language_turkish";
+        };
+        return Localization.component("settings.language", Localization.component(languageKey));
     }
 
     private static Component exploredAreasLabel() {
-        return Component.literal("Explored map: " + (WorldMapConfig.showExploredAreas() ? "Shown" : "Hidden"));
+        return Localization.component("settings.explored_map", Localization.component(
+            WorldMapConfig.showExploredAreas() ? "settings.shown" : "settings.hidden"));
     }
 
     private static Component explorationFilterLabel() {
-        String label = switch (WorldMapConfig.mapLayer()) {
-            case MY_EXPLORED -> "My explored areas";
-            case OTHERS_EXPLORED -> "Others' explored areas";
-            case ALL -> "All explored areas";
+        Component label = switch (WorldMapConfig.mapLayer()) {
+            case MY_EXPLORED -> Localization.component("settings.my_explored_areas");
+            case OTHERS_EXPLORED -> Localization.component("settings.others_explored_areas");
+            case ALL -> Localization.component("settings.all_explored_areas");
             case SELECTED_PLAYER -> WorldMapConfig.selectedExplorerName().isBlank()
-                ? "Selected player" : WorldMapConfig.selectedExplorerName();
+                ? Localization.component("settings.selected_player") : Component.literal(WorldMapConfig.selectedExplorerName());
         };
-        return Component.literal("Explored by: " + label);
+        return Localization.component("settings.explored_by", label);
     }
 
     private static Component explorerSelectLabel() {
         String name = WorldMapConfig.selectedExplorerName();
-        return Component.literal(name.isBlank() ? "Choose player to filter by" : "Choose player: " + name);
+        return name.isBlank() ? Localization.component("settings.choose_player_filter")
+            : Localization.component("settings.choose_player", name);
     }
 
     private static Component playersLabel() {
-        return visibilityLabel("Players", WorldMapConfig.showPlayers());
+        return visibilityLabel("settings.players", WorldMapConfig.showPlayers());
     }
 
     private static Component waypointsLabel() {
-        return visibilityLabel("Waypoints", WorldMapConfig.showWaypoints());
+        return visibilityLabel("settings.waypoints", WorldMapConfig.showWaypoints());
     }
 
-    private static Component visibilityLabel(String name, boolean visible) {
-        return Component.literal(name + ": " + (visible ? "Shown" : "Hidden"));
+    private static Component visibilityLabel(String key, boolean visible) {
+        return Localization.component(key, Localization.component(visible ? "settings.shown" : "settings.hidden"));
     }
 
     @Override

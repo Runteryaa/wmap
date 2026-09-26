@@ -11,17 +11,26 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
     public static final CustomPacketPayload.Type<SyncGlobalWaypointsPayload> ID = new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("worldmap", "sync_global_waypoints"));
     
     public record GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension,
-                                 String icon, String creatorUuid, String creatorName) {
+                                 String icon, String category, String note, String creatorUuid, String creatorName) {
         public GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension) {
-            this(id, name, x, y, z, color, dimension, "", "", "");
+            this(id, name, x, y, z, color, dimension, "", "", "", "", "");
         }
 
         public GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension, String icon) {
-            this(id, name, x, y, z, color, dimension, icon, "", "");
+            this(id, name, x, y, z, color, dimension, icon, "", "", "", "");
+        }
+
+        public GlobalWaypoint(String id, String name, int x, int y, int z, int color, String dimension,
+                              String icon, String creatorUuid, String creatorName) {
+            this(id, name, x, y, z, color, dimension, icon, "", "", creatorUuid, creatorName);
         }
 
         public GlobalWaypoint {
             icon = WaypointIcon.normalize(icon);
+            category = category == null ? "" : category.trim();
+            if (category.length() > 48) category = category.substring(0, 48);
+            note = note == null ? "" : note.trim();
+            if (note.length() > 256) note = note.substring(0, 256);
             creatorUuid = creatorUuid == null ? "" : creatorUuid;
             creatorName = creatorName == null ? "" : creatorName;
         }
@@ -39,6 +48,8 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
                 buf.writeInt(wp.color);
                 buf.writeUtf(wp.dimension);
                 buf.writeUtf(wp.icon);
+                buf.writeUtf(wp.category);
+                buf.writeUtf(wp.note);
             }
         },
         buf -> {
@@ -52,6 +63,8 @@ public record SyncGlobalWaypointsPayload(List<GlobalWaypoint> waypoints) impleme
                     buf.readInt(),
                     buf.readInt(),
                     buf.readInt(),
+                    buf.readUtf(),
+                    buf.readUtf(),
                     buf.readUtf(),
                     buf.readUtf(),
                     "",

@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -63,6 +65,11 @@ public class ClientMapStorage {
     private static final BlockingQueue<LoadedChunk> loadedChunks = new ArrayBlockingQueue<>(LOADED_CHUNK_QUEUE_SIZE);
     private static final java.util.concurrent.ExecutorService loader = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "worldmap-client-loader");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final ExecutorService statisticsLoader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "worldmap-statistics-loader");
         thread.setDaemon(true);
         return thread;
     });
@@ -150,6 +157,118 @@ public class ClientMapStorage {
             throw new IllegalStateException("No world or server is currently selected");
         }
         return getStorageDir();
+    }
+
+    /** Scan saved color and explorer records off the client thread when the statistics screen is opened. */
+    public static CompletableFuture<ExplorationStatistics> loadExplorationStatistics(UUID playerUuid) {
+        if (currentServerId == null || currentServerId.equals("unknown")) {
+            return CompletableFuture.failedFuture(new IllegalStateException("No current world map is selected"));
+        }
+        Path root = getStorageDir();
+        boolean singleplayer = currentServerId.startsWith("singleplayer_");
+        return CompletableFuture.supplyAsync(() -> {
+            flushPendingWrites();
+            return scanExplorationStatistics(root, playerUuid, singleplayer);
+        }, statisticsLoader);
+    }
+
+    private static ExplorationStatistics scanExplorationStatistics(Path root, UUID playerUuid, boolean singleplayer) {
+        Map<String, Set<Long>> chunksByDimension = new HashMap<>();
+        Map<String, Set<Long>> playerChunksByDimension = new HashMap<>();
+        if (!Files.isDirectory(root)) return new ExplorationStatistics(0, 0, Map.of(), Map.of());
+
+        try (Stream<Path> dimensions = Files.list(root)) {
+            List<Path> paths = dimensions.toList();
+            List<Path> legacyRegions = paths.stream().filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
+                .toList();
+            if (!legacyRegions.isEmpty()) {
+                Set<Long> legacyOverworld = chunksByDimension.computeIfAbsent("minecraft:overworld", ignored -> new HashSet<>());
+                for (Path region : legacyRegions) addRegionChunks(region, legacyOverworld);
+                if (singleplayer && playerUuid != null) {
+                    playerChunksByDimension.computeIfAbsent("minecraft:overworld", ignored -> new HashSet<>())
+                        .addAll(legacyOverworld);
+                }
+            }
+
+            for (Path directory : paths.stream().filter(Files::isDirectory)
+                .filter(path -> path.getFileName().toString().startsWith("dim_")).toList()) {
+                String encoded = directory.getFileName().toString().substring(4);
+                String dimension;
+                try {
+                    dimension = new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException exception) {
+                    continue;
+                }
+
+                Set<Long> dimensionChunks = chunksByDimension.computeIfAbsent(dimension, ignored -> new HashSet<>());
+                try (Stream<Path> files = Files.list(directory)) {
+                    for (Path region : files.filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
+                        .toList()) {
+                        addRegionChunks(region, dimensionChunks);
+                    }
+                }
+
+                if (playerUuid == null) continue;
+                Set<Long> ownedChunks = playerChunksByDimension.computeIfAbsent(dimension, ignored -> new HashSet<>());
+                Path explorerFile = directory.resolve("explorers.dat");
+                if (Files.isRegularFile(explorerFile)) {
+                    try (DataInputStream input = new DataInputStream(Files.newInputStream(explorerFile))) {
+                        long remaining = Files.size(explorerFile);
+                        while (remaining >= 24) {
+                            long chunkKey = input.readLong();
+                            UUID explorer = new UUID(input.readLong(), input.readLong());
+                            if (playerUuid.equals(explorer)) ownedChunks.add(chunkKey);
+                            remaining -= 24;
+                        }
+                    }
+                }
+                // Older single-player archives did not always store owner records. There is only one explorer there.
+                if (singleplayer && ownedChunks.isEmpty()) ownedChunks.addAll(dimensionChunks);
+            }
+        } catch (IOException exception) {
+            throw new java.util.concurrent.CompletionException(exception);
+        }
+
+        Map<String, Long> dimensionCounts = new HashMap<>();
+        chunksByDimension.forEach((dimension, chunks) -> dimensionCounts.put(dimension, (long) chunks.size()));
+        Map<String, Long> playerDimensionCounts = new HashMap<>();
+        playerChunksByDimension.forEach((dimension, chunks) -> playerDimensionCounts.put(dimension, (long) chunks.size()));
+        long totalChunks = dimensionCounts.values().stream().mapToLong(Long::longValue).sum();
+        long playerChunks = playerDimensionCounts.values().stream().mapToLong(Long::longValue).sum();
+        return new ExplorationStatistics(totalChunks, playerChunks, dimensionCounts, playerDimensionCounts);
+    }
+
+    private static void addRegionChunks(Path region, Set<Long> chunks) {
+        String[] parts = region.getFileName().toString().replace(".map", "").split("\\.");
+        if (parts.length != 3) return;
+        try {
+            int regionX = Integer.parseInt(parts[1]);
+            int regionZ = Integer.parseInt(parts[2]);
+            try (RandomAccessFile file = new RandomAccessFile(region.toFile(), "r")) {
+                long fileLength = file.length();
+                byte[] bytes = new byte[1024];
+                for (int slot = 0; slot < 1024; slot++) {
+                    long offset = (long) slot * 1024;
+                    if (fileLength < offset + 1024) break;
+                    file.seek(offset);
+                    file.readFully(bytes);
+                    ByteBuffer colors = ByteBuffer.wrap(bytes);
+                    boolean discovered = false;
+                    for (int pixel = 0; pixel < 256; pixel++) {
+                        if (colors.getInt() != 0) discovered = true;
+                    }
+                    if (discovered) {
+                        int chunkX = (regionX << 5) | (slot & 31);
+                        int chunkZ = (regionZ << 5) | (slot >> 5);
+                        chunks.add((((long) chunkX) << 32) | (chunkZ & 0xffffffffL));
+                    }
+                }
+            }
+        } catch (IOException | NumberFormatException exception) {
+            WorldMapMod.LOGGER.warn("Could not scan map region for statistics: {}", region, exception);
+        }
     }
 
     private static Path getDimensionDir(String dimension) {

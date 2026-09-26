@@ -237,8 +237,8 @@ public class WorldMapServer {
                     case ADD -> {
                         globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
                             UUID.randomUUID().toString(), payload.name(), payload.x(), payload.y(), payload.z(),
-                            payload.color(), payload.dimension(), payload.icon(), sender.getUUID().toString(),
-                            sender.getName().getString()
+                            payload.color(), payload.dimension(), payload.icon(), payload.category(), payload.note(),
+                            sender.getUUID().toString(), sender.getName().getString()
                         ));
                         yield true;
                     }
@@ -248,7 +248,8 @@ public class WorldMapServer {
                         SyncGlobalWaypointsPayload.GlobalWaypoint old = globalWaypoints.get(index);
                         globalWaypoints.set(index, new SyncGlobalWaypointsPayload.GlobalWaypoint(
                             payload.id(), payload.name(), payload.x(), payload.y(), payload.z(), payload.color(),
-                            payload.dimension(), payload.icon(), old.creatorUuid(), old.creatorName()
+                            payload.dimension(), payload.icon(), payload.category(), payload.note(),
+                            old.creatorUuid(), old.creatorName()
                         ));
                         yield true;
                     }
@@ -450,15 +451,16 @@ public class WorldMapServer {
                     globalWaypoints.clear();
                     boolean migrated = false;
                     for (SyncGlobalWaypointsPayload.GlobalWaypoint wp : loaded) {
-                        if (wp.id() == null || wp.id().isEmpty()) {
-                            globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
-                                UUID.randomUUID().toString(), wp.name(), wp.x(), wp.y(), wp.z(), wp.color(),
-                                wp.dimension(), wp.icon(), wp.creatorUuid(), wp.creatorName()
-                            ));
+                        String id = wp.id();
+                        if (id == null || id.isEmpty()) {
+                            id = UUID.randomUUID().toString();
                             migrated = true;
-                        } else {
-                            globalWaypoints.add(wp);
                         }
+                        if (wp.category() == null || wp.note() == null) migrated = true;
+                        globalWaypoints.add(new SyncGlobalWaypointsPayload.GlobalWaypoint(
+                            id, wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(), wp.icon(),
+                            wp.category(), wp.note(), wp.creatorUuid(), wp.creatorName()
+                        ));
                     }
                     if (migrated) saveGlobalWaypoints();
                 }

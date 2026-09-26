@@ -12,6 +12,12 @@ import java.nio.file.Path;
 
 /** Client-only settings for the world map. */
 public final class WorldMapConfig {
+    public enum LanguagePreference {
+        MINECRAFT,
+        ENGLISH,
+        TURKISH
+    }
+
     public enum MapLayer {
         MY_EXPLORED,
         OTHERS_EXPLORED,
@@ -30,6 +36,7 @@ public final class WorldMapConfig {
     private static NetherMapView netherMapView = NetherMapView.BEDROCK_SURFACE;
     private static int selectedNetherLayerY = Integer.MIN_VALUE;
     private static boolean autoNetherLayer = true;
+    private static LanguagePreference languagePreference = LanguagePreference.MINECRAFT;
 
     private WorldMapConfig() {}
 
@@ -41,6 +48,13 @@ public final class WorldMapConfig {
 
         try (Reader reader = Files.newBufferedReader(CONFIG_FILE)) {
             JsonObject config = JsonParser.parseReader(reader).getAsJsonObject();
+            if (config.has("language") && config.get("language").isJsonPrimitive()) {
+                try {
+                    languagePreference = LanguagePreference.valueOf(config.get("language").getAsString());
+                } catch (IllegalArgumentException ignored) {
+                    languagePreference = LanguagePreference.MINECRAFT;
+                }
+            }
             if (config.has("openWaypointActionsOnLook") && config.get("openWaypointActionsOnLook").isJsonPrimitive()) {
                 openWaypointActionsOnLook = config.get("openWaypointActionsOnLook").getAsBoolean();
             }
@@ -96,6 +110,19 @@ public final class WorldMapConfig {
 
     public static boolean openWaypointActionsOnLook() {
         return openWaypointActionsOnLook;
+    }
+
+    public static LanguagePreference languagePreference() {
+        return languagePreference;
+    }
+
+    public static void cycleLanguagePreference() {
+        languagePreference = switch (languagePreference) {
+            case MINECRAFT -> LanguagePreference.ENGLISH;
+            case ENGLISH -> LanguagePreference.TURKISH;
+            case TURKISH -> LanguagePreference.MINECRAFT;
+        };
+        save();
     }
 
     public static void setOpenWaypointActionsOnLook(boolean enabled) {
@@ -205,6 +232,7 @@ public final class WorldMapConfig {
         try {
             Files.createDirectories(CONFIG_FILE.getParent());
             JsonObject config = new JsonObject();
+            config.addProperty("language", languagePreference.name());
             config.addProperty("openWaypointActionsOnLook", openWaypointActionsOnLook);
             config.addProperty("mapLayer", mapLayer.name());
             config.addProperty("selectedExplorerUuid", selectedExplorerUuid);

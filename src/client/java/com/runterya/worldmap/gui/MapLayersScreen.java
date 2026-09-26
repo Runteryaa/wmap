@@ -12,7 +12,7 @@ public final class MapLayersScreen extends Screen {
     private final Screen parent;
 
     public MapLayersScreen(Screen parent) {
-        super(Component.literal("Map Layers"));
+        super(Localization.component("layers.title"));
         this.parent = parent;
     }
 
@@ -34,7 +34,7 @@ public final class MapLayersScreen extends Screen {
             button.setMessage(waypointsLabel());
         }).bounds(buttonLeft, panelTop + 132, buttonWidth, 22).build());
 
-        this.addRenderableWidget(Button.builder(Component.literal("Done"), button ->
+        this.addRenderableWidget(Button.builder(Localization.component("settings.done"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent)
         ).bounds(this.width / 2 - 100, panelTop + 200, 200, 22).build());
     }
@@ -47,27 +47,27 @@ public final class MapLayersScreen extends Screen {
         int panelTop = Math.max(12, (this.height - PANEL_HEIGHT) / 2);
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + PANEL_HEIGHT, 0xE0181A20);
         graphics.outline(panelLeft, panelTop, panelWidth, PANEL_HEIGHT, 0xFF777777);
-        graphics.centeredText(this.font, "Map Layers", this.width / 2, panelTop + 12, 0xFFFFFFFF);
-        graphics.centeredText(this.font, "Choose which markers appear on your map",
+        graphics.centeredText(this.font, Localization.text("layers.title"), this.width / 2, panelTop + 12, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("layers.subtitle"),
             this.width / 2, panelTop + 31, 0xFFB8B8B8);
         graphics.fill(panelLeft + 16, panelTop + 52, panelLeft + panelWidth - 16, panelTop + 53, 0xFF55555F);
-        graphics.text(this.font, "Visibility", panelLeft + 18, panelTop + 63, 0xFFFFFFFF, true);
-        graphics.text(this.font, "Toggle players and waypoints independently.",
+        graphics.text(this.font, Localization.text("layers.visibility"), panelLeft + 18, panelTop + 63, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("layers.description"),
             panelLeft + 18, panelTop + 78, 0xFFB8B8B8, true);
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
     private static Component playersLabel() {
-        return visibilityLabel("Players", WorldMapConfig.showPlayers());
+        return visibilityLabel("settings.players", WorldMapConfig.showPlayers());
     }
 
     private static Component waypointsLabel() {
-        return visibilityLabel("Waypoints", WorldMapConfig.showWaypoints());
+        return visibilityLabel("settings.waypoints", WorldMapConfig.showWaypoints());
     }
 
-    private static Component visibilityLabel(String name, boolean visible) {
-        return Component.literal(name + ": " + (visible ? "Shown" : "Hidden"));
+    private static Component visibilityLabel(String key, boolean visible) {
+        return Localization.component(key, Localization.component(visible ? "settings.shown" : "settings.hidden"));
     }
 
     @Override

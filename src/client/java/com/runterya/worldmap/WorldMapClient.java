@@ -89,9 +89,9 @@ public class WorldMapClient implements ClientModInitializer {
                     int z = client.player.getBlockZ();
                     String dim = client.level.dimension().identifier().toString();
                     
-                    Waypoint deathWp = new Waypoint("Death Point", x, y, z, 0xFFFF0000, dim, false);
+                    Waypoint deathWp = new Waypoint(com.runterya.worldmap.gui.Localization.text("waypoint.death_point"), x, y, z, 0xFFFF0000, dim, false);
                     WaypointManager.addWaypoint(deathWp);
-                    client.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Death Waypoint added at X:" + x + " Y:" + y + " Z:" + z).withStyle(net.minecraft.ChatFormatting.RED));
+                    client.player.sendSystemMessage(com.runterya.worldmap.gui.Localization.component("waypoint.death_added", x, y, z).withStyle(net.minecraft.ChatFormatting.RED));
                 }
                 wasDead = isDead;
             }
@@ -181,7 +181,7 @@ public class WorldMapClient implements ClientModInitializer {
                 java.util.List<Waypoint> syncedWaypoints = new java.util.ArrayList<>();
                 for (com.runterya.worldmap.network.SyncGlobalWaypointsPayload.GlobalWaypoint wp : payload.waypoints()) {
                     Waypoint waypoint = new Waypoint(wp.name(), wp.x(), wp.y(), wp.z(), wp.color(), wp.dimension(),
-                        true, "", wp.icon());
+                        true, "", wp.icon(), wp.category(), wp.note());
                     waypoint.setGlobalId(wp.id());
                     waypoint.setCreatorUuid(wp.creatorUuid());
                     waypoint.setCreatorName(wp.creatorName());

@@ -18,7 +18,7 @@ public final class NetherLayerSelectionScreen extends Screen {
     private final String selectedDimension;
 
     public NetherLayerSelectionScreen(Screen parent, int minY, int maxY, String selectedDimension) {
-        super(Component.literal("Layered Map View"));
+        super(Localization.component("layered.title"));
         this.parent = parent;
         this.minY = minY;
         this.maxY = maxY;
@@ -51,14 +51,18 @@ public final class NetherLayerSelectionScreen extends Screen {
         int gridTop = panelTop + 48;
 
         boolean bedrockSelected = WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE;
-        this.addRenderableWidget(Button.builder(Component.literal(bedrockSelected ? "✓ Bedrock top" : "Bedrock top"), button -> {
+        this.addRenderableWidget(Button.builder(bedrockSelected
+            ? Localization.component("layered.selected", Localization.component("layered.bedrock_top"))
+            : Localization.component("layered.bedrock_top"), button -> {
             WorldMapConfig.selectNetherBedrockTop();
             ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(gridLeft, gridTop, cellWidth, 20).build());
 
         boolean autoSelected = WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER
             && WorldMapConfig.isNetherLayerAuto();
-        this.addRenderableWidget(Button.builder(Component.literal(autoSelected ? "✓ Auto" : "Auto"), button -> {
+        this.addRenderableWidget(Button.builder(autoSelected
+            ? Localization.component("layered.selected", Localization.component("layered.auto"))
+            : Localization.component("layered.auto"), button -> {
             WorldMapConfig.selectNetherAutoLayer();
             ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(gridLeft + cellWidth + cellGap, gridTop, cellWidth, 20).build());
@@ -71,18 +75,19 @@ public final class NetherLayerSelectionScreen extends Screen {
             int index = 2 + (layerY - minLayerY) / NetherMapView.CAVE_LAYER_STEP;
             int column = index % COLUMNS;
             int row = index / COLUMNS;
-            String label = (WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER
+            Component label = WorldMapConfig.netherMapView() == NetherMapView.CAVE_LAYER
                 && !WorldMapConfig.isNetherLayerAuto() && layerY == selectedLayerY
-                ? "✓ Y " : "Y ") + layerY;
+                ? Localization.component("layered.selected_y", layerY)
+                : Localization.component("layered.y", layerY);
             int selectedY = layerY;
-            this.addRenderableWidget(Button.builder(Component.literal(label), button -> {
+            this.addRenderableWidget(Button.builder(label, button -> {
                 WorldMapConfig.selectNetherCaveLayer(selectedY);
                 ClientPlatform.setScreen(this.minecraft, this.parent);
             }).bounds(gridLeft + column * (cellWidth + cellGap), gridTop + row * CELL_HEIGHT,
                 cellWidth, 20).build());
         }
 
-        this.addRenderableWidget(Button.builder(Component.literal("Back"), button ->
+        this.addRenderableWidget(Button.builder(Localization.component("layered.back"), button ->
             ClientPlatform.setScreen(this.minecraft, this.parent)
         ).bounds(this.width / 2 - 80, panelTop + panelHeight - 28, 160, 20).build());
     }
@@ -103,8 +108,8 @@ public final class NetherLayerSelectionScreen extends Screen {
 
         graphics.fill(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight, 0xE0181A20);
         graphics.outline(panelLeft, panelTop, panelWidth, panelHeight, 0xFF777777);
-        graphics.centeredText(this.font, "Layered Map View", this.width / 2, panelTop + 10, 0xFFFFFFFF);
-        graphics.centeredText(this.font, "Choose bedrock top or any 8-block layer",
+        graphics.centeredText(this.font, Localization.text("layered.title"), this.width / 2, panelTop + 10, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("layered.description"),
             this.width / 2, panelTop + 29, 0xFFB8B8B8);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }

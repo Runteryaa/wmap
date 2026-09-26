@@ -13,6 +13,8 @@ public class Waypoint {
     private String worldId;
     private String globalId;
     private String icon = "";
+    private String category = "";
+    private String note = "";
     private String creatorUuid = "";
     private String creatorName = "";
 
@@ -26,6 +28,11 @@ public class Waypoint {
 
     public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal,
                     String worldId, String icon) {
+        this(name, x, y, z, color, dimension, isGlobal, worldId, icon, "", "");
+    }
+
+    public Waypoint(String name, int x, int y, int z, int color, String dimension, boolean isGlobal,
+                    String worldId, String icon, String category, String note) {
         this.name = name;
         this.x = x;
         this.y = y;
@@ -35,6 +42,8 @@ public class Waypoint {
         this.isGlobal = isGlobal;
         this.worldId = worldId;
         this.icon = WaypointIcon.normalize(icon);
+        setCategory(category);
+        setNote(note);
     }
 
     public String getName() { return name; }
@@ -58,4 +67,14 @@ public class Waypoint {
         return this.icon;
     }
     public void setIcon(String icon) { this.icon = WaypointIcon.normalize(icon); }
+    public String getCategory() { return category == null ? "" : category; }
+    public void setCategory(String category) {
+        this.category = category == null ? "" : category.trim();
+        if (this.category.length() > 48) this.category = this.category.substring(0, 48);
+    }
+    public String getNote() { return note == null ? "" : note; }
+    public void setNote(String note) {
+        this.note = note == null ? "" : note.trim();
+        if (this.note.length() > 256) this.note = this.note.substring(0, 256);
+    }
 }

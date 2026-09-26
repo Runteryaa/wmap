@@ -45,7 +45,7 @@ public class WaypointManager {
         if (wp.isGlobal() && serverWaypointSharingAvailable) {
             net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                 AddGlobalWaypointPayload.Action.ADD, "", wp.getName(), wp.getX(), wp.getY(), wp.getZ(), wp.getColor(),
-                wp.getDimension(), wp.getIcon()
+                wp.getDimension(), wp.getIcon(), wp.getCategory(), wp.getNote()
             ));
             return;
         }
@@ -90,7 +90,8 @@ public class WaypointManager {
                 if (serverWaypointSharingAvailable && !original.getGlobalId().isEmpty()) {
                     net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                         AddGlobalWaypointPayload.Action.UPDATE, original.getGlobalId(), updated.getName(), updated.getX(), updated.getY(),
-                        updated.getZ(), updated.getColor(), updated.getDimension(), updated.getIcon()
+                        updated.getZ(), updated.getColor(), updated.getDimension(), updated.getIcon(),
+                        updated.getCategory(), updated.getNote()
                     ));
                 }
                 return;
@@ -111,7 +112,7 @@ public class WaypointManager {
             save();
             net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new AddGlobalWaypointPayload(
                 AddGlobalWaypointPayload.Action.ADD, "", updated.getName(), updated.getX(), updated.getY(), updated.getZ(),
-                updated.getColor(), updated.getDimension(), updated.getIcon()
+                updated.getColor(), updated.getDimension(), updated.getIcon(), updated.getCategory(), updated.getNote()
             ));
             return;
         }

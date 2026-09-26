@@ -53,6 +53,7 @@ public class WorldMapScreen extends Screen {
         com.runterya.worldmap.network.PlayerPosPayload.PlayerPos player
     ) {}
     private Button itemSearchButton;
+    private Button settingsButton;
     private Button netherViewButton;
     private Button dimensionButton;
     private String selectedDimension;
@@ -66,7 +67,7 @@ public class WorldMapScreen extends Screen {
     private List<SearchItemEntry> filteredSearchItems = List.of();
 
     public WorldMapScreen() {
-        super(Component.literal("World Map"));
+        super(Localization.component("map.title"));
         
         // Center the map on the local player if they exist
         if (Minecraft.getInstance().player != null) {
@@ -82,7 +83,7 @@ public class WorldMapScreen extends Screen {
 
     @Override
     protected void init() {
-        this.addRenderableWidget(Button.builder(Component.literal("Map settings"), button ->
+        this.settingsButton = this.addRenderableWidget(Button.builder(Localization.component("map.settings"), button ->
             com.runterya.worldmap.client.ClientPlatform.setScreen(
                 this.minecraft, new WorldMapConfigScreen(this)
             )
@@ -107,13 +108,13 @@ public class WorldMapScreen extends Screen {
         this.waypointSearchField = new EditBox(this.font,
             Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8), 8,
             Math.min(190, this.width - 110), 20,
-            Component.literal("Search waypoints"));
-        this.waypointSearchField.setHint(Component.literal("Search waypoint name"));
+            Localization.component("map.search_waypoints"));
+        this.waypointSearchField.setHint(Localization.component("map.search_waypoint_name"));
         this.waypointSearchField.setMaxLength(64);
         this.waypointSearchField.setResponder(text -> this.searchScrollOffset = 0);
         this.addRenderableWidget(this.waypointSearchField);
-        this.itemSearchButton = this.addRenderableWidget(Button.builder(Component.literal(
-            this.selectedSearchItem.isBlank() ? "Choose item" : "Item selected"), button ->
+        this.itemSearchButton = this.addRenderableWidget(Button.builder(
+            Localization.component(this.selectedSearchItem.isBlank() ? "map.choose_item" : "map.item_selected"), button ->
             openWaypointItemPicker()
         ).bounds(Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8) + 196, 8,
             Math.min(76, Math.max(40, this.width - 224)), 20).build());
@@ -205,7 +206,7 @@ public class WorldMapScreen extends Screen {
         // Draw mouse coordinates
         double mouseWorldX = (mouseX - centerX) / scale - panX;
         double mouseWorldZ = (mouseY - centerY) / scale - panY;
-        String coordText = String.format("X: %d, Z: %d", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
+        String coordText = Localization.text("map.coordinates", (int) Math.round(mouseWorldX), (int) Math.round(mouseWorldZ));
         graphics.fill(3, 3, font.width(coordText) + 8, font.lineHeight + 7, 0x99000000);
         graphics.text(font, coordText, 5, 5, 0xFFFFFFFF, true);
 
@@ -218,6 +219,17 @@ public class WorldMapScreen extends Screen {
         return this.selectedDimension == null ? "minecraft:overworld" : this.selectedDimension;
     }
 
+    void refreshLocalization() {
+        if (this.settingsButton != null) this.settingsButton.setMessage(Localization.component("map.settings"));
+        if (this.waypointSearchField != null) {
+            this.waypointSearchField.setHint(Localization.component("map.search_waypoint_name"));
+        }
+        if (this.itemSearchButton != null) {
+            this.itemSearchButton.setMessage(Localization.component(
+                this.selectedSearchItem.isBlank() ? "map.choose_item" : "map.item_selected"));
+        }
+    }
+
     /** Skip off-screen map regions before requesting their texture upload. */
     private boolean isRegionVisible(double worldX, double worldZ, int centerX, int centerY) {
         double left = centerX + (worldX + panX) * scale;
@@ -228,14 +240,14 @@ public class WorldMapScreen extends Screen {
     }
 
     private Component dimensionButtonLabel() {
-        return Component.literal("Dimension: " + dimensionDisplayName(activeDimension()));
+        return Localization.component("map.dimension", dimensionDisplayName(activeDimension()));
     }
 
     private static String dimensionDisplayName(String dimension) {
         return switch (dimension) {
-            case "minecraft:overworld" -> "Overworld";
-            case "minecraft:the_nether" -> "Nether";
-            case "minecraft:the_end" -> "End";
+            case "minecraft:overworld" -> Localization.text("dimension.overworld");
+            case "minecraft:the_nether" -> Localization.text("dimension.nether");
+            case "minecraft:the_end" -> Localization.text("dimension.end");
             default -> dimension;
         };
     }
@@ -337,10 +349,9 @@ public class WorldMapScreen extends Screen {
     }
 
     private static Component netherViewLabel(String dimension) {
-        String prefix = NetherMapView.NETHER_DIMENSION.equals(dimension) ? "Nether" : "Layered";
         if (WorldMapConfig.netherMapView() == NetherMapView.BEDROCK_SURFACE) {
-            return Component.literal(NetherMapView.NETHER_DIMENSION.equals(dimension)
-                ? "Nether: Bedrock top" : "Layered: Surface");
+            return Localization.component(NetherMapView.NETHER_DIMENSION.equals(dimension)
+                ? "map.nether_bedrock_top" : "map.layered_surface");
         }
         Minecraft minecraft = Minecraft.getInstance();
         boolean playerInSelectedDimension = minecraft.level != null && minecraft.player != null
@@ -349,7 +360,8 @@ public class WorldMapScreen extends Screen {
         int maxY = playerInSelectedDimension ? minecraft.level.getMaxY() : 256;
         int playerY = playerInSelectedDimension ? minecraft.player.blockPosition().getY() : 40;
         int layerY = WorldMapConfig.selectedNetherLayerY(minY, maxY, playerY);
-        return Component.literal(prefix + ": Layer Y " + layerY);
+        return Localization.component(NetherMapView.NETHER_DIMENSION.equals(dimension)
+            ? "map.nether_layer_y" : "map.layered_layer_y", layerY);
     }
 
     private static String currentMapDimension(String currentDimension) {
@@ -425,7 +437,7 @@ public class WorldMapScreen extends Screen {
         graphics.fill(x, y, x + suggestionWidth, y + PLAYER_SUGGESTION_HEIGHT,
             hovered ? 0xFF45454F : 0xF0202020);
         graphics.outline(x, y, suggestionWidth, PLAYER_SUGGESTION_HEIGHT, 0xFF777777);
-        graphics.text(this.font, suggestion + "?", x + 6, y + 6, 0xFFFFFFFF, true);
+        graphics.text(this.font, Localization.text("map.player_suggestion", suggestion), x + 6, y + 6, 0xFFFFFFFF, true);
     }
 
     private boolean handlePlayerNameSuggestionClick(MouseButtonEvent event) {
@@ -468,6 +480,8 @@ public class WorldMapScreen extends Screen {
             .filter(wp -> wp.getDimension().equals(currentDim))
             .filter(wp -> this.selectedSearchItem.isBlank() || wp.getIcon().equals(this.selectedSearchItem))
             .filter(wp -> query.isEmpty() || wp.getName().toLowerCase(Locale.ROOT).contains(query)
+                || wp.getCategory().toLowerCase(Locale.ROOT).contains(query)
+                || wp.getNote().toLowerCase(Locale.ROOT).contains(query)
                 || waypointOwnerMatches(wp, query, playerMatches, searchingForLocalPlayer))
             .forEach(wp -> results.add(new WaypointSearchResult(wp, null)));
 
@@ -519,8 +533,8 @@ public class WorldMapScreen extends Screen {
         this.selectedSearchItem = selected.equals(this.selectedSearchItem) ? "" : selected;
         if (this.waypointSearchField != null) this.waypointSearchField.setValue("");
         if (this.itemSearchButton != null) {
-            this.itemSearchButton.setMessage(Component.literal(
-                this.selectedSearchItem.isBlank() ? "Choose item" : "Item selected"));
+            this.itemSearchButton.setMessage(Localization.component(
+                this.selectedSearchItem.isBlank() ? "map.choose_item" : "map.item_selected"));
         }
         this.searchScrollOffset = 0;
         this.itemPickerOpen = false;
@@ -543,8 +557,8 @@ public class WorldMapScreen extends Screen {
         graphics.fill(panelX, panelY, panelX + SEARCH_PANEL_WIDTH, panelY + panelHeight, 0xF0202020);
         graphics.outline(panelX, panelY, SEARCH_PANEL_WIDTH, panelHeight, 0xFF777777);
         String header = this.selectedSearchItem.isBlank()
-            ? results.size() + " matching waypoints and players"
-            : selectedSearchItemName() + " — " + results.size() + " waypoints";
+            ? Localization.text("map.search_results_players", results.size())
+            : Localization.text("map.search_results_waypoints", selectedSearchItemName(), results.size());
         int headerMaxWidth = SEARCH_PANEL_WIDTH - 12;
         while (!header.isEmpty() && this.font.width(header) > headerMaxWidth) {
             header = header.substring(0, header.length() - 1);
@@ -585,7 +599,9 @@ public class WorldMapScreen extends Screen {
                         graphics.item(new ItemStack(item), panelX + 4, rowY + 3);
                     }
                 }
-                label = waypoint.getName() + "  " + waypoint.getX() + ", " + waypoint.getZ();
+                label = waypoint.getName()
+                    + (waypoint.getCategory().isBlank() ? "" : " · " + waypoint.getCategory())
+                    + "  " + waypoint.getX() + ", " + waypoint.getZ();
             }
 
             int maxTextWidth = SEARCH_PANEL_WIDTH - 30;
@@ -598,7 +614,7 @@ public class WorldMapScreen extends Screen {
 
     private String selectedSearchItemName() {
         Identifier id = Identifier.tryParse(this.selectedSearchItem);
-        if (id == null) return "Selected item";
+        if (id == null) return Localization.text("map.selected_item");
         Item item = BuiltInRegistries.ITEM.getValue(id);
         return item == Items.AIR ? this.selectedSearchItem : new ItemStack(item).getHoverName().getString();
     }
@@ -610,12 +626,12 @@ public class WorldMapScreen extends Screen {
         graphics.fill(0, 0, this.width, this.height, 0xB0000000);
         graphics.fill(panelX, panelY, panelX + 290, panelY + 238, 0xFF202020);
         graphics.outline(panelX, panelY, 290, 238, 0xFFAAAAAA);
-        graphics.centeredText(this.font, "Choose item to find waypoints", panelX + 145, panelY + 8, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Localization.text("map.choose_item_for_waypoints"), panelX + 145, panelY + 8, 0xFFFFFFFF);
         graphics.fill(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF101010);
         graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
         String visibleSearch = this.itemPickerSearch.length() > 34
             ? this.itemPickerSearch.substring(this.itemPickerSearch.length() - 34) : this.itemPickerSearch;
-        graphics.text(this.font, visibleSearch.isEmpty() ? "Search items by name" : visibleSearch + "|",
+        graphics.text(this.font, visibleSearch.isEmpty() ? Localization.text("map.search_items_by_name") : visibleSearch + "|",
             panelX + 14, panelY + 31, visibleSearch.isEmpty() ? 0xFF888888 : 0xFFFFFFFF);
         graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
         graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
@@ -635,7 +651,7 @@ public class WorldMapScreen extends Screen {
             graphics.item(entry.stack(), x + 4, y + 4);
             if (hovered) graphics.setTooltipForNextFrame(this.font, entry.stack(), mouseX, mouseY);
         }
-        graphics.text(this.font, this.filteredSearchItems.size() + " items — scroll to browse",
+        graphics.text(this.font, Localization.text("map.item_count", this.filteredSearchItems.size()),
             panelX + 12, panelY + 224, 0xFFCCCCCC);
     }
 
