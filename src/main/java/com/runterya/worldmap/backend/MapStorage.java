@@ -21,6 +21,8 @@ import java.util.Queue;
 import net.minecraft.world.level.ChunkPos;
 
 public class MapStorage {
+    private static final int MAX_CHUNKS_PER_FLUSH = 512;
+    private static final int MAX_EXPLORERS_PER_FLUSH = 4096;
     private final Path storageDir;
     public record ExploredChunk(String dimension, int chunkX, int chunkZ, Set<UUID> explorers) {}
     private record DimensionChunkKey(String dimension, long chunkKey) {}
@@ -78,7 +80,9 @@ public class MapStorage {
     /** Flush accumulated map updates, grouping color writes by region file. */
     public synchronized void flushPending() {
         Map<RegionKey, List<Map.Entry<DimensionChunkKey, int[]>>> byRegion = new java.util.HashMap<>();
+        int chunkCount = 0;
         for (Map.Entry<DimensionChunkKey, int[]> entry : dirtyChunks.entrySet()) {
+            if (chunkCount++ >= MAX_CHUNKS_PER_FLUSH) break;
             DimensionChunkKey key = entry.getKey();
             int chunkX = (int) (key.chunkKey() >> 32);
             int chunkZ = (int) key.chunkKey();
@@ -95,7 +99,8 @@ public class MapStorage {
 
         Map<String, List<ExplorerRecord>> byDimension = new java.util.HashMap<>();
         ExplorerRecord explorer;
-        while ((explorer = dirtyExplorers.poll()) != null) {
+        int explorerCount = 0;
+        while (explorerCount++ < MAX_EXPLORERS_PER_FLUSH && (explorer = dirtyExplorers.poll()) != null) {
             byDimension.computeIfAbsent(explorer.dimension(), ignored -> new ArrayList<>()).add(explorer);
         }
         byDimension.forEach((dimension, records) -> {
@@ -103,16 +108,21 @@ public class MapStorage {
         });
     }
 
+    public synchronized boolean hasPendingWrites() {
+        return !dirtyChunks.isEmpty() || !dirtyExplorers.isEmpty();
+    }
+
     private boolean saveRegionChunks(RegionKey region, List<Map.Entry<DimensionChunkKey, int[]>> entries) {
         Path file = getRegionFile(region.dimension(), region.regionX(), region.regionZ());
         try {
             Files.createDirectories(file.getParent());
             try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "rw")) {
+                ByteBuffer buffer = ByteBuffer.allocate(1024);
                 for (Map.Entry<DimensionChunkKey, int[]> entry : entries) {
                     int chunkX = (int) (entry.getKey().chunkKey() >> 32);
                     int chunkZ = (int) entry.getKey().chunkKey();
                     raf.seek(((long) ((chunkZ & 31) * 32 + (chunkX & 31))) * 1024L);
-                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    buffer.clear();
                     for (int color : entry.getValue()) buffer.putInt(color);
                     raf.write(buffer.array());
                 }

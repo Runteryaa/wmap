@@ -149,10 +149,13 @@ public class WorldMapScreen extends Screen {
 
                 int worldX = regionPos.x() * 512;
                 int worldZ = regionPos.z() * 512;
+                if (!isRegionVisible(worldX, worldZ, centerX, centerY)) continue;
 
-                if (texture.getTextureLocation() != null) {
+                Identifier textureLocation = texture.getTextureLocation();
+                if (textureLocation != null) {
                     // Draw 512x512 region texture (id, x0, y0, x1, y1, u0, u1, v0, v1)
-                    graphics.blit(texture.getTextureLocation(), worldX, worldZ, worldX + 512, worldZ + 512, 0.0f, 1.0f, 0.0f, 1.0f);
+                    graphics.blit(textureLocation, worldX, worldZ, worldX + 512, worldZ + 512,
+                        0.0f, 1.0f, 0.0f, 1.0f);
                 }
             }
         }
@@ -213,6 +216,15 @@ public class WorldMapScreen extends Screen {
 
     private String activeDimension() {
         return this.selectedDimension == null ? "minecraft:overworld" : this.selectedDimension;
+    }
+
+    /** Skip off-screen map regions before requesting their texture upload. */
+    private boolean isRegionVisible(double worldX, double worldZ, int centerX, int centerY) {
+        double left = centerX + (worldX + panX) * scale;
+        double top = centerY + (worldZ + panY) * scale;
+        double right = left + 512.0 * scale;
+        double bottom = top + 512.0 * scale;
+        return right > 0 && bottom > 0 && left < this.width && top < this.height;
     }
 
     private Component dimensionButtonLabel() {

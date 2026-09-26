@@ -229,6 +229,19 @@ public class ClientMapManager {
         return new UpdateResult(applied.colorsChanged(), applied.explorersChanged(), useServerColor);
     }
 
+    /**
+     * Restore a persisted local entry without replacing data already resolved
+     * from the live client world or received from the server during this join.
+     */
+    public static UpdateResult receiveDiskUpdate(String dimension, int chunkX, int chunkZ,
+                                                 int[] colors, Set<UUID> explorers) {
+        DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
+        if (chunkData.containsKey(key)) {
+            return new UpdateResult(false, false, false);
+        }
+        return receiveUpdate(dimension, chunkX, chunkZ, colors, explorers);
+    }
+
     public static Set<UUID> getExplorers(String dimension, int chunkX, int chunkZ) {
         ChunkData data = chunkData.get(new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ)));
         return data == null ? Set.of() : data.explorers();

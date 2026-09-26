@@ -290,7 +290,11 @@ public class WorldMapServer {
             MapStorage activeStorage = storage;
             if (activeStorage != null) {
                 try {
-                    ioExecutor.submit(activeStorage::flushPending).get(10, TimeUnit.SECONDS);
+                    ioExecutor.submit(() -> {
+                        for (int batch = 0; batch < 32 && activeStorage.hasPendingWrites(); batch++) {
+                            activeStorage.flushPending();
+                        }
+                    }).get(10, TimeUnit.SECONDS);
                 } catch (Exception exception) {
                     System.err.println("Timed out flushing world map data during server shutdown");
                     exception.printStackTrace();

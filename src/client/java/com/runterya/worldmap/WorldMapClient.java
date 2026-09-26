@@ -46,6 +46,7 @@ public class WorldMapClient implements ClientModInitializer {
         WaypointBeaconBeamRenderer.initialize();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            ClientMapStorage.processLoadedChunks();
             ClientMapManager.processPendingChunks(2);
 
             if (mapKeyBinding != null) {

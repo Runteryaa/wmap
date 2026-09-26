@@ -1,6 +1,8 @@
 package com.runterya.worldmap.client;
 
 import com.runterya.worldmap.WorldMapMod;
+import com.runterya.worldmap.backend.LayeredDimensions;
+import com.runterya.worldmap.backend.NetherMapView;
 import net.minecraft.client.Minecraft;
 
 import java.io.IOException;
@@ -23,9 +25,13 @@ import java.util.UUID;
 import java.util.stream.Stream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.Comparator;
 
 /**
  * Client-side persistent map storage, saved per server/world.
@@ -42,12 +48,29 @@ public class ClientMapStorage {
     }
     private record RegionKey(Path root, String dimension, int regionX, int regionZ) {}
     private static final Map<PendingKey, PendingWrite> pendingWrites = new HashMap<>();
-    private static final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
+    private static final int MAX_WRITE_BATCH_CHUNKS = 512;
+    private static final long WRITE_COALESCE_MILLIS = 100;
+    private static final long WRITE_RETRY_MILLIS = 1_000;
+    private static final ScheduledExecutorService writer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "worldmap-client-storage");
         thread.setDaemon(true);
         return thread;
     });
     private static boolean writeScheduled;
+    private static final int LOADED_CHUNK_QUEUE_SIZE = 256;
+    private static final int LOADED_CHUNKS_PER_TICK = 24;
+    private static final AtomicLong loadGeneration = new AtomicLong();
+    private static final BlockingQueue<LoadedChunk> loadedChunks = new ArrayBlockingQueue<>(LOADED_CHUNK_QUEUE_SIZE);
+    private static final java.util.concurrent.ExecutorService loader = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "worldmap-client-loader");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private record LoadedChunk(long generation, String dimension, int chunkX, int chunkZ,
+                               int[] colors, Set<UUID> explorers) {}
+    private record RegionFile(Path path, String dimension, Path dimensionDirectory,
+                              int regionX, int regionZ, int dimensionPriority,
+                              long regionDistanceSquared) {}
 
     /**
      * Call on server join to set the server identifier.
@@ -83,6 +106,8 @@ public class ClientMapStorage {
     }
 
     public static void clearCurrentServer() {
+        loadGeneration.incrementAndGet();
+        loadedChunks.clear();
         flushPendingWrites();
         currentServerId = null;
         explorerCache.clear();
@@ -155,22 +180,27 @@ public class ClientMapStorage {
             PendingWrite write = pendingWrites.computeIfAbsent(key, ignored -> new PendingWrite());
             if (saveColors && colors != null) write.colors = colors.clone();
             if (saveExplorers && explorers != null) write.explorers.addAll(explorers);
-            scheduleWriteLocked();
+            scheduleWriteLocked(WRITE_COALESCE_MILLIS);
         }
     }
 
-    private static void scheduleWriteLocked() {
+    private static void scheduleWriteLocked(long delayMillis) {
         if (writeScheduled) return;
         writeScheduled = true;
-        writer.submit(ClientMapStorage::drainPendingWrites);
+        writer.schedule(ClientMapStorage::drainPendingWrites, delayMillis, TimeUnit.MILLISECONDS);
     }
 
     private static void drainPendingWrites() {
         Map<PendingKey, PendingWrite> batch;
         synchronized (pendingWrites) {
-            batch = new HashMap<>(pendingWrites);
-            pendingWrites.clear();
             writeScheduled = false;
+            batch = new HashMap<>(Math.min(MAX_WRITE_BATCH_CHUNKS, pendingWrites.size()));
+            var iterator = pendingWrites.entrySet().iterator();
+            while (batch.size() < MAX_WRITE_BATCH_CHUNKS && iterator.hasNext()) {
+                Map.Entry<PendingKey, PendingWrite> entry = iterator.next();
+                batch.put(entry.getKey(), entry.getValue());
+                iterator.remove();
+            }
         }
         Map<RegionKey, List<Map.Entry<PendingKey, PendingWrite>>> byRegion = new HashMap<>();
         Map<Path, Map<String, List<Map.Entry<PendingKey, PendingWrite>>>> byStorage = new HashMap<>();
@@ -205,11 +235,13 @@ public class ClientMapStorage {
                     PendingWrite source = batch.get(key);
                     pendingWrites.computeIfAbsent(key, ignored -> new PendingWrite()).explorers.addAll(source.explorers);
                 }
-                scheduleWriteLocked();
             }
         }
         synchronized (pendingWrites) {
-            if (!pendingWrites.isEmpty()) scheduleWriteLocked();
+            if (!pendingWrites.isEmpty()) {
+                scheduleWriteLocked(failedColors.isEmpty() && failedExplorers.isEmpty()
+                    ? WRITE_COALESCE_MILLIS : WRITE_RETRY_MILLIS);
+            }
         }
     }
 
@@ -220,11 +252,12 @@ public class ClientMapStorage {
         try {
             Files.createDirectories(file.getParent());
             try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "rw")) {
+                ByteBuffer buffer = ByteBuffer.allocate(1024);
                 for (Map.Entry<PendingKey, PendingWrite> entry : entries) {
                     int chunkX = (int) (entry.getKey().chunkKey() >> 32);
                     int chunkZ = (int) entry.getKey().chunkKey();
                     int offset = ((chunkZ & 31) * 32 + (chunkX & 31)) * 1024;
-                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    buffer.clear();
                     for (int color : entry.getValue().colors) buffer.putInt(color);
                     raf.seek(offset);
                     raf.write(buffer.array());
@@ -279,11 +312,20 @@ public class ClientMapStorage {
     public static void flushPendingWrites() {
         try {
             writer.submit(() -> {
-                synchronized (pendingWrites) {
-                    if (!pendingWrites.isEmpty() && !writeScheduled) scheduleWriteLocked();
+                for (int attempt = 0; attempt < 16; attempt++) {
+                    synchronized (pendingWrites) {
+                        if (pendingWrites.isEmpty()) return;
+                        writeScheduled = false;
+                    }
+                    drainPendingWrites();
                 }
             }).get(10, TimeUnit.SECONDS);
-            writer.submit(() -> {}).get(10, TimeUnit.SECONDS);
+            synchronized (pendingWrites) {
+                if (!pendingWrites.isEmpty()) {
+                    WorldMapMod.LOGGER.warn("Some map writes are still queued after disconnect flush: {} chunks",
+                        pendingWrites.size());
+                }
+            }
         } catch (Exception exception) {
             WorldMapMod.LOGGER.warn("Timed out waiting for pending map writes", exception);
         }
@@ -294,84 +336,158 @@ public class ClientMapStorage {
      */
     public static void loadAllIntoManager() {
         if (currentServerId == null) return;
+        Minecraft mc = Minecraft.getInstance();
         Path storageDir = getStorageDir();
-        if (!Files.exists(storageDir)) return;
+        if (!Files.isDirectory(storageDir)) return;
 
-        try (Stream<Path> paths = Files.list(storageDir)) {
-            for (Path path : paths.toList()) {
-                String name = path.getFileName().toString();
-                if (Files.isRegularFile(path) && name.matches("r\\.-?\\d+\\.-?\\d+\\.map")) {
-                    // Legacy client files had no dimension key; preserve them as Overworld data.
-                    loadRegionFile(path, "minecraft:overworld", Map.of());
-                } else if (Files.isDirectory(path) && name.startsWith("dim_")) {
-                    try {
-                        String dimension = new String(Base64.getUrlDecoder().decode(name.substring(4)), StandardCharsets.UTF_8);
-                        Map<Long, Set<UUID>> explorers = loadExplorers(path, dimension);
-                        loadDimensionFiles(path, dimension, explorers);
-                    } catch (IllegalArgumentException exception) {
-                        WorldMapMod.LOGGER.warn("Ignoring map folder with invalid dimension key: {}", path);
+        String activeDimension = mc.level == null ? "minecraft:overworld"
+            : mc.level.dimension().identifier().toString();
+        int centerChunkX = mc.player == null ? 0 : mc.player.chunkPosition().x();
+        int centerChunkZ = mc.player == null ? 0 : mc.player.chunkPosition().z();
+        int activeLayerY = mc.level != null && LayeredDimensions.contains(mc.level) && mc.player != null
+            ? NetherMapView.getPlayerLayerY(mc.player.blockPosition().getY(), mc.level.getMinY(), mc.level.getMaxY())
+            : Integer.MIN_VALUE;
+        UUID singleplayerOwner = mc.getSingleplayerServer() != null && mc.player != null
+            ? mc.player.getUUID() : null;
+        boolean singleplayer = currentServerId.startsWith("singleplayer_");
+        long generation = loadGeneration.incrementAndGet();
+        loadedChunks.clear();
+        loader.execute(() -> loadSavedMaps(storageDir, activeDimension, centerChunkX, centerChunkZ,
+            activeLayerY, singleplayer, singleplayerOwner, generation));
+    }
+
+    /** Apply a bounded number of decoded records each client tick, keeping join responsive. */
+    public static void processLoadedChunks() {
+        long generation = loadGeneration.get();
+        for (int i = 0; i < LOADED_CHUNKS_PER_TICK; i++) {
+            LoadedChunk chunk = loadedChunks.poll();
+            if (chunk == null) return;
+            if (chunk.generation() != generation) continue;
+            ClientMapManager.receiveDiskUpdate(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(),
+                chunk.colors(), chunk.explorers());
+        }
+    }
+
+    private static void loadSavedMaps(Path storageDir, String activeDimension, int centerChunkX, int centerChunkZ,
+                                      int activeLayerY, boolean singleplayer, UUID singleplayerOwner, long generation) {
+        try {
+            List<RegionFile> files = new ArrayList<>();
+            try (Stream<Path> paths = Files.list(storageDir)) {
+                for (Path path : paths.toList()) {
+                    String name = path.getFileName().toString();
+                    if (Files.isRegularFile(path) && name.matches("r\\.-?\\d+\\.-?\\d+\\.map")) {
+                        addRegionFile(files, path, "minecraft:overworld", null, activeDimension,
+                            centerChunkX, centerChunkZ, activeLayerY, true);
+                    } else if (Files.isDirectory(path) && name.startsWith("dim_")) {
+                        try {
+                            String dimension = new String(Base64.getUrlDecoder().decode(name.substring(4)), StandardCharsets.UTF_8);
+                            try (Stream<Path> dimensionFiles = Files.list(path)) {
+                                for (Path region : dimensionFiles.filter(Files::isRegularFile)
+                                    .filter(file -> file.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
+                                    .toList()) {
+                                    addRegionFile(files, region, dimension, path, activeDimension,
+                                        centerChunkX, centerChunkZ, activeLayerY, false);
+                                }
+                            }
+                        } catch (IllegalArgumentException exception) {
+                            WorldMapMod.LOGGER.warn("Ignoring map folder with invalid dimension key: {}", path);
+                        }
                     }
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+            files.sort(Comparator.comparingInt(RegionFile::dimensionPriority)
+                .thenComparingLong(RegionFile::regionDistanceSquared));
 
-    private static void loadDimensionFiles(Path directory, String dimension, Map<Long, Set<UUID>> explorers) {
-        try (Stream<Path> paths = Files.list(directory)) {
-            paths.filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().matches("r\\.-?\\d+\\.-?\\d+\\.map"))
-                .forEach(path -> loadRegionFile(path, dimension, explorers));
+            Map<Path, Map<Long, Set<UUID>>> explorersByDimension = new HashMap<>();
+            for (RegionFile file : files) {
+                if (generation != loadGeneration.get()) return;
+                Map<Long, Set<UUID>> explorers = file.dimensionDirectory() == null ? Map.of()
+                    : explorersByDimension.computeIfAbsent(file.dimensionDirectory(),
+                        directory -> loadExplorers(directory, file.dimension()));
+                loadRegionFile(file, explorers, singleplayer, singleplayerOwner, centerChunkX, centerChunkZ, generation);
+            }
         } catch (IOException exception) {
-            WorldMapMod.LOGGER.warn("Could not read map data for dimension {}", dimension, exception);
+            WorldMapMod.LOGGER.warn("Could not enumerate saved map data in {}", storageDir, exception);
         }
     }
 
-    private static void loadRegionFile(Path file, String dimension, Map<Long, Set<UUID>> explorers) {
-        String name = file.getFileName().toString();
-        // Parse r.X.Z.map
-        String[] parts = name.replace(".map", "").split("\\.");
-        if (parts.length < 3) return;
+    private static void addRegionFile(List<RegionFile> files, Path path, String dimension, Path directory,
+                                      String activeDimension, int centerChunkX, int centerChunkZ,
+                                      int activeLayerY, boolean legacy) {
+        String[] parts = path.getFileName().toString().replace(".map", "").split("\\.");
+        if (parts.length != 3) return;
         try {
             int rx = Integer.parseInt(parts[1]);
             int rz = Integer.parseInt(parts[2]);
+            String gameDimension = legacy ? dimension : NetherMapView.gameDimension(dimension);
+            int priority;
+            if (gameDimension.equals(activeDimension)) {
+                int layerY = NetherMapView.getCaveLayerY(dimension);
+                if (layerY == activeLayerY || (!NetherMapView.isCaveLayerDimension(dimension) && activeLayerY == Integer.MIN_VALUE)) {
+                    priority = 0;
+                } else if (NetherMapView.isCaveLayerDimension(dimension)) {
+                    priority = 1 + (activeLayerY == Integer.MIN_VALUE ? 0 : Math.abs(layerY - activeLayerY) / NetherMapView.CAVE_LAYER_STEP);
+                } else {
+                    priority = 1;
+                }
+            } else {
+                priority = 100;
+            }
+            long regionCenterX = ((long) rx << 5) + 16;
+            long regionCenterZ = ((long) rz << 5) + 16;
+            long dx = regionCenterX - centerChunkX;
+            long dz = regionCenterZ - centerChunkZ;
+            files.add(new RegionFile(path, dimension, directory, rx, rz, priority, dx * dx + dz * dz));
+        } catch (NumberFormatException ignored) {
+            // Ignore malformed region filenames.
+        }
+    }
 
-            try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r")) {
-                long fileLen = raf.length();
-                for (int lz = 0; lz < 32; lz++) {
-                    for (int lx = 0; lx < 32; lx++) {
-                        int offset = (lz * 32 + lx) * 1024;
-                        if (fileLen < offset + 1024) continue;
-                        raf.seek(offset);
-                        byte[] bytes = new byte[1024];
-                        raf.readFully(bytes);
-                        
-                        ByteBuffer buf = ByteBuffer.wrap(bytes);
-                        int[] colors = new int[256];
-                        boolean empty = true;
-                        for (int i = 0; i < 256; i++) {
-                            colors[i] = buf.getInt();
-                            if (colors[i] != 0) {
-                                empty = false;
-                            }
-                        }
-                        if (empty) continue;
-                        int chunkX = (rx << 5) | lx;
-                        int chunkZ = (rz << 5) | lz;
-                        long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
-                        Set<UUID> chunkExplorers = explorers.get(chunkKey);
-                        if (chunkExplorers == null && currentServerId != null && currentServerId.startsWith("singleplayer_")
-                            && Minecraft.getInstance().player != null) {
-                            chunkExplorers = Set.of(Minecraft.getInstance().player.getUUID());
-                        }
-                        ClientMapManager.receiveUpdate(dimension, chunkX, chunkZ, colors,
-                            chunkExplorers == null ? Set.of() : chunkExplorers);
-                    }
+    private static void loadRegionFile(RegionFile region, Map<Long, Set<UUID>> explorers, boolean singleplayer,
+                                       UUID singleplayerOwner, int centerChunkX, int centerChunkZ, long generation) {
+        try (RandomAccessFile raf = new RandomAccessFile(region.path().toFile(), "r")) {
+            long fileLen = raf.length();
+            List<Integer> slots = new ArrayList<>(1024);
+            for (int slot = 0; slot < 1024; slot++) slots.add(slot);
+            slots.sort(Comparator.comparingLong(slot -> {
+                int chunkX = (region.regionX() << 5) | (slot & 31);
+                int chunkZ = (region.regionZ() << 5) | (slot >> 5);
+                long dx = (long) chunkX - centerChunkX;
+                long dz = (long) chunkZ - centerChunkZ;
+                return dx * dx + dz * dz;
+            }));
+            byte[] bytes = new byte[1024];
+            for (int slot : slots) {
+                if (generation != loadGeneration.get()) return;
+                int offset = slot * 1024;
+                if (fileLen < offset + 1024) continue;
+                raf.seek(offset);
+                raf.readFully(bytes);
+                ByteBuffer buffer = ByteBuffer.wrap(bytes);
+                int[] colors = new int[256];
+                boolean empty = true;
+                for (int i = 0; i < colors.length; i++) {
+                    colors[i] = buffer.getInt();
+                    if (colors[i] != 0) empty = false;
+                }
+                if (empty) continue;
+                int chunkX = (region.regionX() << 5) | (slot & 31);
+                int chunkZ = (region.regionZ() << 5) | (slot >> 5);
+                long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+                Set<UUID> chunkExplorers = explorers.get(chunkKey);
+                if (chunkExplorers == null && singleplayer && singleplayerOwner != null) {
+                    chunkExplorers = Set.of(singleplayerOwner);
+                }
+                LoadedChunk loaded = new LoadedChunk(generation, region.dimension(), chunkX, chunkZ, colors,
+                    chunkExplorers == null ? Set.of() : Set.copyOf(chunkExplorers));
+                while (generation == loadGeneration.get()) {
+                    if (loadedChunks.offer(loaded, 100, TimeUnit.MILLISECONDS)) break;
                 }
             }
-        } catch (NumberFormatException | IOException e) {
-            e.printStackTrace();
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not read map region {}", region.path(), exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
         }
     }
 
