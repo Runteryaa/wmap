@@ -27,7 +27,17 @@ public class WaypointContextMenuScreen extends Screen {
             this.addRenderableWidget(Button.builder(Localization.component("waypoint_menu.teleport"), button -> {
                 Minecraft currentMinecraft = this.minecraft;
                 if (TeleportPermissions.canTeleport(currentMinecraft)) {
-                    currentMinecraft.player.connection.sendCommand("tp @s " + (this.waypoint.getX() + 0.5) + " "
+                    net.minecraft.resources.Identifier dimension =
+                        net.minecraft.resources.Identifier.tryParse(this.waypoint.getDimension());
+                    if (dimension == null) {
+                        if (currentMinecraft.player != null) {
+                            currentMinecraft.player.sendSystemMessage(
+                                Localization.component("waypoint_menu.invalid_dimension"));
+                        }
+                        return;
+                    }
+                    currentMinecraft.player.connection.sendCommand("execute in " + dimension
+                        + " run tp @s " + (this.waypoint.getX() + 0.5) + " "
                         + this.waypoint.getY() + " " + (this.waypoint.getZ() + 0.5));
                     com.runterya.worldmap.client.ClientPlatform.setScreen(currentMinecraft, null);
                 }

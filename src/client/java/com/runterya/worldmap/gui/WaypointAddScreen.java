@@ -3,6 +3,7 @@ package com.runterya.worldmap.gui;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import com.runterya.worldmap.client.waypoint.Waypoint;
 import com.runterya.worldmap.client.waypoint.WaypointManager;
@@ -59,6 +60,9 @@ public class WaypointAddScreen extends Screen {
     private String itemSearch = "";
     private int itemScrollRow;
     private Button itemButton;
+    private EditBox itemSearchField;
+    private Button itemPickerCloseButton;
+    private final List<AbstractWidget> itemPickerHiddenWidgets = new ArrayList<>();
     private List<ItemEntry> allItems = List.of();
     private List<ItemEntry> filteredItems = List.of();
     private static final int PICKER_COLUMNS = 9;
@@ -70,6 +74,7 @@ public class WaypointAddScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        this.itemPickerHiddenWidgets.clear();
         int centerX = this.width / 2;
         int centerY = this.height / 2;
 
@@ -146,6 +151,28 @@ public class WaypointAddScreen extends Screen {
         this.addRenderableWidget(Button.builder(Localization.component("waypoint.cancel"), button -> {
             com.runterya.worldmap.client.ClientPlatform.setScreen(this.minecraft, this.parent);
         }).bounds(centerX + 2, centerY + 76, 98, 20).build());
+
+        for (var child : this.children()) {
+            if (child instanceof AbstractWidget widget) this.itemPickerHiddenWidgets.add(widget);
+        }
+        int pickerX = Math.max(8, (this.width - 290) / 2);
+        int pickerY = Math.max(8, (this.height - 238) / 2);
+        this.itemSearchField = new EditBox(this.font, pickerX + 9, pickerY + 25, 245, 20,
+            Localization.component("waypoint.search_items"));
+        this.itemSearchField.setHint(Localization.component("waypoint.search_items"));
+        this.itemSearchField.setMaxLength(48);
+        this.itemSearchField.setResponder(text -> {
+            this.itemSearch = text;
+            filterItems();
+        });
+        this.itemSearchField.setValue(this.itemSearch);
+        this.itemSearchField.visible = false;
+        this.addRenderableWidget(this.itemSearchField);
+        this.itemPickerCloseButton = this.addRenderableWidget(Button.builder(Component.literal("X"), button ->
+            setItemPickerOpen(false)
+        ).bounds(pickerX + 260, pickerY + 25, 22, 20).build());
+        this.itemPickerCloseButton.visible = false;
+        setItemPickerOpen(this.itemPickerOpen);
     }
 
     private Component visibilityLabel() {
@@ -176,7 +203,28 @@ public class WaypointAddScreen extends Screen {
         this.filteredItems = this.allItems;
         this.itemSearch = "";
         this.itemScrollRow = 0;
-        this.itemPickerOpen = true;
+        if (this.itemSearchField != null) this.itemSearchField.setValue("");
+        setItemPickerOpen(true);
+    }
+
+    private void setItemPickerOpen(boolean open) {
+        this.itemPickerOpen = open;
+        for (AbstractWidget widget : this.itemPickerHiddenWidgets) widget.visible = !open;
+        if (this.itemSearchField != null) {
+            this.itemSearchField.visible = open;
+            this.itemSearchField.active = open;
+            if (open) {
+                this.itemSearchField.setFocused(true);
+                this.setFocused(this.itemSearchField);
+            } else {
+                this.itemSearchField.setFocused(false);
+                if (this.nameField != null) {
+                    this.nameField.setFocused(false);
+                    this.setFocused(this.nameField);
+                }
+            }
+        }
+        if (this.itemPickerCloseButton != null) this.itemPickerCloseButton.visible = open;
     }
 
     private void filterItems() {
@@ -190,7 +238,7 @@ public class WaypointAddScreen extends Screen {
         if (filteredIndex >= 0 && filteredIndex < this.filteredItems.size()) {
             Identifier selectedId = this.filteredItems.get(filteredIndex).id();
             this.currentIcon = selectedId.equals(NO_ICON_ID) ? "" : selectedId.toString();
-            this.itemPickerOpen = false;
+            setItemPickerOpen(false);
             this.itemButton.setMessage(iconLabel());
         }
     }
@@ -199,29 +247,21 @@ public class WaypointAddScreen extends Screen {
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         if (!this.itemPickerOpen) return super.keyPressed(event);
         if (event.key() == InputConstants.KEY_ESCAPE) {
-            this.itemPickerOpen = false;
-            return true;
-        }
-        if (event.key() == InputConstants.KEY_BACKSPACE && !this.itemSearch.isEmpty()) {
-            int end = this.itemSearch.offsetByCodePoints(this.itemSearch.length(), -1);
-            this.itemSearch = this.itemSearch.substring(0, end);
-            filterItems();
+            setItemPickerOpen(false);
             return true;
         }
         if (event.key() == InputConstants.KEY_RETURN) {
             selectItem(0);
             return true;
         }
+        super.keyPressed(event);
         return true;
     }
 
     @Override
     public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
         if (!this.itemPickerOpen) return super.charTyped(event);
-        if (event.isAllowedChatCharacter() && this.itemSearch.codePointCount(0, this.itemSearch.length()) < 48) {
-            this.itemSearch += event.codepointAsString();
-            filterItems();
-        }
+        super.charTyped(event);
         return true;
     }
 
@@ -241,24 +281,22 @@ public class WaypointAddScreen extends Screen {
         int button = event.button();
 
         if (this.itemPickerOpen) {
-            if (button != InputConstants.MOUSE_BUTTON_LEFT) return true;
-            int panelX = Math.max(8, (this.width - 290) / 2);
-            int panelY = Math.max(8, (this.height - 238) / 2);
-            if (mouseX >= panelX + 258 && mouseX <= panelX + 282
-                && mouseY >= panelY + 7 && mouseY <= panelY + 27) {
-                this.itemPickerOpen = false;
-                return true;
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) {
+                int panelX = Math.max(8, (this.width - 290) / 2);
+                int panelY = Math.max(8, (this.height - 238) / 2);
+                int gridX = panelX + 18;
+                int gridY = panelY + 54;
+                int gridWidth = PICKER_COLUMNS * 28;
+                int gridHeight = PICKER_ROWS * 28;
+                if (mouseX >= gridX && mouseX < gridX + gridWidth
+                    && mouseY >= gridY && mouseY < gridY + gridHeight) {
+                    int column = (int) (mouseX - gridX) / 28;
+                    int row = (int) (mouseY - gridY) / 28;
+                    selectItem((this.itemScrollRow + row) * PICKER_COLUMNS + column);
+                    return true;
+                }
             }
-            int gridX = panelX + 18;
-            int gridY = panelY + 54;
-            int gridWidth = PICKER_COLUMNS * 28;
-            int gridHeight = PICKER_ROWS * 28;
-            if (mouseX >= gridX && mouseX < gridX + gridWidth && mouseY >= gridY && mouseY < gridY + gridHeight) {
-                int column = (int) (mouseX - gridX) / 28;
-                int row = (int) (mouseY - gridY) / 28;
-                selectItem((this.itemScrollRow + row) * PICKER_COLUMNS + column);
-                return true;
-            }
+            super.mouseClicked(event, isDouble);
             return true;
         }
         
@@ -308,7 +346,13 @@ public class WaypointAddScreen extends Screen {
 
     @Override
     public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTicks) {
+        if (this.itemPickerOpen) drawItemPickerBackground(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, partialTicks);
+
+        if (this.itemPickerOpen) {
+            drawItemPickerContents(graphics, mouseX, mouseY);
+            return;
+        }
         
         int centerX = this.width / 2;
         int centerY = this.height / 2;
@@ -351,7 +395,6 @@ public class WaypointAddScreen extends Screen {
         graphics.fill(boxX, boxY, boxX + 20, boxY + 20, 0xFF000000); // Black border
         graphics.fill(boxX + 1, boxY + 1, boxX + 19, boxY + 19, 0xFF000000 | this.currentColor); // Color
 
-        if (this.itemPickerOpen) drawItemPicker(graphics, mouseX, mouseY);
     }
 
     private ItemStack selectedIconStack() {
@@ -362,25 +405,18 @@ public class WaypointAddScreen extends Screen {
         return item == Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
     }
 
-    private void drawItemPicker(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+    private void drawItemPickerBackground(net.minecraft.client.gui.GuiGraphicsExtractor graphics) {
         int panelX = Math.max(8, (this.width - 290) / 2);
         int panelY = Math.max(8, (this.height - 238) / 2);
         graphics.fill(0, 0, this.width, this.height, 0xB0000000);
         graphics.fill(panelX, panelY, panelX + 290, panelY + 238, 0xFF202020);
         graphics.outline(panelX, panelY, 290, 238, 0xFFAAAAAA);
         graphics.centeredText(this.font, Localization.text("waypoint.choose_item"), panelX + 145, panelY + 8, 0xFFFFFFFF);
-        graphics.fill(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF101010);
-        graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
-        String visibleSearch = this.itemSearch.length() > 34
-            ? this.itemSearch.substring(this.itemSearch.length() - 34) : this.itemSearch;
-        if (visibleSearch.isEmpty()) {
-            graphics.text(this.font, Localization.text("waypoint.search_items"), panelX + 14, panelY + 31, 0xFF888888);
-        } else {
-            graphics.text(this.font, visibleSearch + "|", panelX + 14, panelY + 31, 0xFFFFFFFF);
-        }
-        graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
-        graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
+    }
 
+    private void drawItemPickerContents(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        int panelX = Math.max(8, (this.width - 290) / 2);
+        int panelY = Math.max(8, (this.height - 238) / 2);
         int firstIndex = this.itemScrollRow * PICKER_COLUMNS;
         int visibleCount = PICKER_COLUMNS * PICKER_ROWS;
         int count = Math.min(visibleCount, this.filteredItems.size() - firstIndex);

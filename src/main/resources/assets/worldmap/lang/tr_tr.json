@@ -114,6 +114,7 @@
   "worldmap.waypoint_menu.remove": "Kaldır",
   "worldmap.waypoint_menu.back": "Geri",
   "worldmap.waypoint_menu.removed": "İşaret noktası kaldırıldı!",
+  "worldmap.waypoint_menu.invalid_dimension": "Bu işaret noktasının boyut kimliği geçersiz.",
   "worldmap.waypoint_menu.category": "Kategori: %s",
   "worldmap.waypoint_menu.note": "Not: %s",
   "worldmap.player_menu.teleport": "%s oyuncusuna ışınlan",

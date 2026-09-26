@@ -114,6 +114,7 @@
   "worldmap.waypoint_menu.remove": "Remove",
   "worldmap.waypoint_menu.back": "Back",
   "worldmap.waypoint_menu.removed": "Waypoint removed!",
+  "worldmap.waypoint_menu.invalid_dimension": "This waypoint has an invalid dimension.",
   "worldmap.waypoint_menu.category": "Category: %s",
   "worldmap.waypoint_menu.note": "Note: %s",
   "worldmap.player_menu.teleport": "Teleport to %s",

@@ -60,10 +60,11 @@ public class WorldMapScreen extends Screen {
     private boolean dimensionPickerOpen;
     private int dimensionPickerOffset;
     private boolean itemPickerOpen;
-    private boolean itemPickerSearchFocused;
     private String itemPickerSearch = "";
     private int itemPickerScrollRow;
     private String selectedSearchItem = "";
+    private EditBox itemPickerSearchField;
+    private Button itemPickerClearButton;
     private List<SearchItemEntry> allSearchItems = List.of();
     private List<SearchItemEntry> filteredSearchItems = List.of();
 
@@ -102,7 +103,7 @@ public class WorldMapScreen extends Screen {
         this.netherViewButton.visible = isNetherStyleDimension(activeDimension());
         this.netherViewButton.active = this.netherViewButton.visible;
         this.dimensionButton = this.addRenderableWidget(Button.builder(dimensionButtonLabel(), button -> {
-            this.itemPickerOpen = false;
+            setWaypointItemPickerOpen(false);
             this.dimensionPickerOpen = !this.dimensionPickerOpen;
             this.dimensionPickerOffset = 0;
         }).bounds(Math.max(8, this.width - 190), this.height - 28, 182, 20).build());
@@ -119,6 +120,27 @@ public class WorldMapScreen extends Screen {
             openWaypointItemPicker()
         ).bounds(Math.max(8, this.width - SEARCH_PANEL_WIDTH - 8) + 196, 8,
             Math.min(76, Math.max(40, this.width - 224)), 20).build());
+
+        int pickerX = Math.max(8, (this.width - 290) / 2);
+        int pickerY = Math.max(8, (this.height - 238) / 2);
+        this.itemPickerSearchField = new EditBox(this.font, pickerX + 9, pickerY + 25, 245, 20,
+            Localization.component("map.search_items_by_name"));
+        this.itemPickerSearchField.setHint(Localization.component("map.search_items_by_name"));
+        this.itemPickerSearchField.setMaxLength(48);
+        this.itemPickerSearchField.setResponder(text -> {
+            this.itemPickerSearch = text;
+            filterWaypointItems();
+        });
+        this.itemPickerSearchField.setValue(this.itemPickerSearch);
+        this.itemPickerSearchField.visible = false;
+        this.addRenderableWidget(this.itemPickerSearchField);
+        this.itemPickerClearButton = this.addRenderableWidget(Button.builder(Component.literal("X"), button -> {
+            this.itemPickerSearchField.setValue("");
+            this.itemPickerSearchField.setFocused(true);
+            this.setFocused(this.itemPickerSearchField);
+        }).bounds(pickerX + 260, pickerY + 25, 22, 20).build());
+        this.itemPickerClearButton.visible = false;
+        setWaypointItemPickerOpen(this.itemPickerOpen);
     }
 
     @Override
@@ -129,10 +151,18 @@ public class WorldMapScreen extends Screen {
         if (this.netherViewButton != null) {
             boolean supportsLayers = isNetherStyleDimension(currentDim);
             this.netherViewButton.setMessage(netherViewLabel(currentDim));
-            this.netherViewButton.visible = supportsLayers;
+            this.netherViewButton.visible = supportsLayers && !this.itemPickerOpen;
             this.netherViewButton.active = supportsLayers;
         }
-        if (this.dimensionButton != null) this.dimensionButton.setMessage(dimensionButtonLabel());
+        if (this.dimensionButton != null) {
+            this.dimensionButton.setMessage(dimensionButtonLabel());
+            this.dimensionButton.visible = !this.itemPickerOpen;
+        }
+        if (this.settingsButton != null) this.settingsButton.visible = !this.itemPickerOpen;
+        if (this.waypointSearchField != null) this.waypointSearchField.visible = !this.itemPickerOpen;
+        if (this.itemSearchButton != null) this.itemSearchButton.visible = !this.itemPickerOpen;
+        if (this.itemPickerSearchField != null) this.itemPickerSearchField.visible = this.itemPickerOpen;
+        if (this.itemPickerClearButton != null) this.itemPickerClearButton.visible = this.itemPickerOpen;
 
         graphics.pose().pushMatrix();
         
@@ -166,8 +196,15 @@ public class WorldMapScreen extends Screen {
 
         graphics.pose().popMatrix();
 
+        if (this.itemPickerOpen) drawWaypointItemPickerBackground(graphics);
+
         // Keep controls above the map texture, but below waypoint and player markers.
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+
+        if (this.itemPickerOpen) {
+            drawWaypointItemPickerContents(graphics, mouseX, mouseY);
+            return;
+        }
 
         // --- SCREEN SPACE RENDERING ---
         net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
@@ -216,7 +253,6 @@ public class WorldMapScreen extends Screen {
         }
 
         drawWaypointSearchResults(graphics, mouseX, mouseY, currentDim);
-        if (this.itemPickerOpen) drawWaypointItemPicker(graphics, mouseX, mouseY);
         if (this.dimensionPickerOpen) drawDimensionPicker(graphics, mouseX, mouseY);
     }
 
@@ -536,8 +572,34 @@ public class WorldMapScreen extends Screen {
         this.filteredSearchItems = this.allSearchItems;
         this.itemPickerSearch = "";
         this.itemPickerScrollRow = 0;
-        this.itemPickerOpen = true;
-        this.itemPickerSearchFocused = true;
+        if (this.itemPickerSearchField != null) this.itemPickerSearchField.setValue("");
+        setWaypointItemPickerOpen(true);
+    }
+
+    private void setWaypointItemPickerOpen(boolean open) {
+        this.itemPickerOpen = open;
+        if (this.itemPickerSearchField != null) {
+            this.itemPickerSearchField.visible = open;
+            this.itemPickerSearchField.active = open;
+            if (open) {
+                this.itemPickerSearchField.setFocused(true);
+                this.setFocused(this.itemPickerSearchField);
+            } else {
+                this.itemPickerSearchField.setFocused(false);
+                if (this.waypointSearchField != null) {
+                    this.waypointSearchField.setFocused(false);
+                    this.setFocused(this.waypointSearchField);
+                }
+            }
+        }
+        if (this.itemPickerClearButton != null) this.itemPickerClearButton.visible = open;
+        if (this.settingsButton != null) this.settingsButton.visible = !open;
+        if (this.netherViewButton != null) {
+            this.netherViewButton.visible = !open && isNetherStyleDimension(activeDimension());
+        }
+        if (this.dimensionButton != null) this.dimensionButton.visible = !open;
+        if (this.waypointSearchField != null) this.waypointSearchField.visible = !open;
+        if (this.itemSearchButton != null) this.itemSearchButton.visible = !open;
     }
 
     private void filterWaypointItems() {
@@ -557,8 +619,7 @@ public class WorldMapScreen extends Screen {
                 this.selectedSearchItem.isBlank() ? "map.choose_item" : "map.item_selected"));
         }
         this.searchScrollOffset = 0;
-        this.itemPickerOpen = false;
-        this.itemPickerSearchFocused = false;
+        setWaypointItemPickerOpen(false);
     }
 
     private void drawWaypointSearchResults(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
@@ -640,24 +701,19 @@ public class WorldMapScreen extends Screen {
         return item == Items.AIR ? this.selectedSearchItem : new ItemStack(item).getHoverName().getString();
     }
 
-    private void drawWaypointItemPicker(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
-                                        int mouseX, int mouseY) {
+    private void drawWaypointItemPickerBackground(net.minecraft.client.gui.GuiGraphicsExtractor graphics) {
         int panelX = Math.max(8, (this.width - 290) / 2);
         int panelY = Math.max(8, (this.height - 238) / 2);
         graphics.fill(0, 0, this.width, this.height, 0xB0000000);
         graphics.fill(panelX, panelY, panelX + 290, panelY + 238, 0xFF202020);
         graphics.outline(panelX, panelY, 290, 238, 0xFFAAAAAA);
         graphics.centeredText(this.font, Localization.text("map.choose_item_for_waypoints"), panelX + 145, panelY + 8, 0xFFFFFFFF);
-        graphics.fill(panelX + 9, panelY + 25, panelX + 254, panelY + 45, 0xFF101010);
-        graphics.outline(panelX + 9, panelY + 25, 245, 20, 0xFF777777);
-        String visibleSearch = this.itemPickerSearch.length() > 34
-            ? this.itemPickerSearch.substring(this.itemPickerSearch.length() - 34) : this.itemPickerSearch;
-        graphics.text(this.font, visibleSearch.isEmpty() ? Localization.text("map.search_items_by_name")
-                : visibleSearch + (this.itemPickerSearchFocused ? "|" : ""),
-            panelX + 14, panelY + 31, visibleSearch.isEmpty() ? 0xFF888888 : 0xFFFFFFFF);
-        graphics.fill(panelX + 260, panelY + 25, panelX + 282, panelY + 45, 0xFF41414A);
-        graphics.centeredText(this.font, "X", panelX + 271, panelY + 31, 0xFFFFFFFF);
+    }
 
+    private void drawWaypointItemPickerContents(net.minecraft.client.gui.GuiGraphicsExtractor graphics,
+                                                int mouseX, int mouseY) {
+        int panelX = Math.max(8, (this.width - 290) / 2);
+        int panelY = Math.max(8, (this.height - 238) / 2);
         int firstIndex = this.itemPickerScrollRow * ITEM_PICKER_COLUMNS;
         int visibleCount = ITEM_PICKER_COLUMNS * ITEM_PICKER_ROWS;
         int count = Math.min(visibleCount, this.filteredSearchItems.size() - firstIndex);
@@ -681,18 +737,6 @@ public class WorldMapScreen extends Screen {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return true;
         int panelX = Math.max(8, (this.width - 290) / 2);
         int panelY = Math.max(8, (this.height - 238) / 2);
-        if (event.x() >= panelX + 260 && event.x() < panelX + 282
-            && event.y() >= panelY + 25 && event.y() < panelY + 45) {
-            this.itemPickerSearch = "";
-            filterWaypointItems();
-            this.itemPickerSearchFocused = true;
-            return true;
-        }
-        if (event.x() >= panelX + 9 && event.x() < panelX + 254
-            && event.y() >= panelY + 25 && event.y() < panelY + 45) {
-            this.itemPickerSearchFocused = true;
-            return true;
-        }
         int gridX = panelX + 18;
         int gridY = panelY + 54;
         if (event.x() >= gridX && event.x() < gridX + ITEM_PICKER_COLUMNS * 28
@@ -700,8 +744,9 @@ public class WorldMapScreen extends Screen {
             int column = (int) (event.x() - gridX) / 28;
             int row = (int) (event.y() - gridY) / 28;
             selectWaypointSearchItem((this.itemPickerScrollRow + row) * ITEM_PICKER_COLUMNS + column);
+            return true;
         }
-        return true;
+        return false;
     }
 
     @Override
@@ -717,33 +762,21 @@ public class WorldMapScreen extends Screen {
         }
         if (!this.itemPickerOpen) return super.keyPressed(event);
         if (event.key() == InputConstants.KEY_ESCAPE) {
-            this.itemPickerOpen = false;
-            this.itemPickerSearchFocused = false;
+            setWaypointItemPickerOpen(false);
             return true;
         }
-        if (event.key() == InputConstants.KEY_BACKSPACE && this.itemPickerSearchFocused
-            && !this.itemPickerSearch.isEmpty()) {
-            int end = this.itemPickerSearch.offsetByCodePoints(this.itemPickerSearch.length(), -1);
-            this.itemPickerSearch = this.itemPickerSearch.substring(0, end);
-            filterWaypointItems();
-            return true;
-        }
-        if (event.key() == InputConstants.KEY_BACKSPACE && this.itemPickerSearchFocused) return true;
         if (event.key() == InputConstants.KEY_RETURN) {
             selectWaypointSearchItem(0);
             return true;
         }
+        super.keyPressed(event);
         return true;
     }
 
     @Override
     public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
         if (!this.itemPickerOpen) return super.charTyped(event);
-        if (this.itemPickerSearchFocused && event.isAllowedChatCharacter()
-            && this.itemPickerSearch.codePointCount(0, this.itemPickerSearch.length()) < 48) {
-            this.itemPickerSearch += event.codepointAsString();
-            filterWaypointItems();
-        }
+        super.charTyped(event);
         return true;
     }
 
@@ -1011,7 +1044,11 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean isDouble) {
-        if (this.itemPickerOpen) return handleWaypointItemPickerClick(event);
+        if (this.itemPickerOpen) {
+            if (handleWaypointItemPickerClick(event)) return true;
+            super.mouseClicked(event, isDouble);
+            return true;
+        }
         if (handleDimensionPickerClick(event)) return true;
         if (handlePlayerNameSuggestionClick(event)) return true;
         if (handleWaypointSearchResultClick(event)) return true;
