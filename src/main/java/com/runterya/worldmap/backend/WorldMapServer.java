@@ -354,7 +354,7 @@ public class WorldMapServer {
             },
             chunkPos -> {}
         );
-        nearby.sort(Comparator.comparingInt(chunk -> mapDimensionPriority(chunk.dimension(),
+        nearby.sort(Comparator.<SyncChunk>comparingInt(chunk -> mapDimensionPriority(chunk.dimension(),
                 player.level().dimension().identifier().toString(),
                 NetherMapView.getPlayerLayerY(player.blockPosition().getY(), player.level().getMinY(), player.level().getMaxY())))
             .thenComparingLong(chunk -> squaredDistance(chunk.chunkX(), chunk.chunkZ(),
