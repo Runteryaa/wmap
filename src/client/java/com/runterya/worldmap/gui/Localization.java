@@ -3,6 +3,7 @@ package com.runterya.worldmap.gui;
 import com.runterya.worldmap.WorldMapConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 
 import java.io.InputStreamReader;
@@ -22,7 +23,7 @@ public final class Localization {
 
     private Localization() {}
 
-    public static Component component(String key, Object... arguments) {
+    public static MutableComponent component(String key, Object... arguments) {
         String locale = selectedLocale();
         String translationKey = "worldmap." + key;
         String translation = language(locale).get(translationKey);

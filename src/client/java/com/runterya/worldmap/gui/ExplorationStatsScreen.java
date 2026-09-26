@@ -37,7 +37,8 @@ public final class ExplorationStatsScreen extends Screen {
             ? this.minecraft.player.getUUID() : null;
         ClientMapStorage.loadExplorationStatistics(playerUuid).whenComplete((result, failure) -> {
             Minecraft.getInstance().execute(() -> {
-                if (Minecraft.getInstance().screen != this) return;
+                if (!com.runterya.worldmap.client.ClientPlatform.isScreen(
+                    Minecraft.getInstance(), ExplorationStatsScreen.class)) return;
                 if (failure != null) {
                     this.error = Localization.text("statistics.error");
                 } else {
