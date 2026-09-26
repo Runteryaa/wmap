@@ -91,7 +91,7 @@ public class WorldMapServer {
         }
 
         synchronized List<SyncChunk> takeBatch(int maxCount) {
-            if (loading || pending.isEmpty() || ready.size() >= 16) return List.of();
+            if (loading || pending.isEmpty() || ready.size() >= 64) return List.of();
             loading = true;
             List<SyncChunk> batch = new ArrayList<>(Math.min(maxCount, pending.size()));
             while (batch.size() < maxCount && !pending.isEmpty()) {
@@ -415,10 +415,12 @@ public class WorldMapServer {
             if (!MODDED_PLAYERS.contains(player.getUUID())) continue;
             MapSyncTransfer transfer = mapTransfers.get(player.getUUID());
             if (transfer == null) continue;
-            for (MapUpdatePayload payload : transfer.drain(8)) {
+            // Keep the join-time backlog moving while nearby chunks remain at
+            // the front of the transfer queue.
+            for (MapUpdatePayload payload : transfer.drain(32)) {
                 ServerPlayNetworking.send(player, payload);
             }
-            List<SyncChunk> batch = transfer.takeBatch(16);
+            List<SyncChunk> batch = transfer.takeBatch(64);
             if (batch.isEmpty()) continue;
             MapStorage activeStorage = storage;
             ioExecutor.submit(() -> {

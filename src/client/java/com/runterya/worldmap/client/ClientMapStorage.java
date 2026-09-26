@@ -59,8 +59,11 @@ public class ClientMapStorage {
         return thread;
     });
     private static boolean writeScheduled;
-    private static final int LOADED_CHUNK_QUEUE_SIZE = 256;
-    private static final int LOADED_CHUNKS_PER_TICK = 24;
+    // Keep disk decoding ahead of the client thread so it does not stall after
+    // filling a tiny queue while a large world map is being restored.
+    private static final int LOADED_CHUNK_QUEUE_SIZE = 4096;
+    private static final int MAX_LOADED_CHUNKS_PER_TICK = 2048;
+    private static final long MAP_RESTORE_BUDGET_NANOS = TimeUnit.MILLISECONDS.toNanos(8);
     private static final AtomicLong loadGeneration = new AtomicLong();
     private static final BlockingQueue<LoadedChunk> loadedChunks = new ArrayBlockingQueue<>(LOADED_CHUNK_QUEUE_SIZE);
     private static final java.util.concurrent.ExecutorService loader = Executors.newSingleThreadExecutor(r -> {
@@ -476,15 +479,22 @@ public class ClientMapStorage {
             activeLayerY, singleplayer, singleplayerOwner, generation));
     }
 
-    /** Apply a bounded number of decoded records each client tick, keeping join responsive. */
+    /**
+     * Apply cached records quickly while bounding the time spent on the client
+     * thread. Nearby chunks are queued first by loadSavedMaps, so the visible
+     * area appears before distant regions and other dimensions are restored.
+     */
     public static void processLoadedChunks() {
         long generation = loadGeneration.get();
-        for (int i = 0; i < LOADED_CHUNKS_PER_TICK; i++) {
+        long deadline = System.nanoTime() + MAP_RESTORE_BUDGET_NANOS;
+        for (int i = 0; i < MAX_LOADED_CHUNKS_PER_TICK; i++) {
             LoadedChunk chunk = loadedChunks.poll();
-            if (chunk == null) return;
-            if (chunk.generation() != generation) continue;
-            ClientMapManager.receiveDiskUpdate(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(),
-                chunk.colors(), chunk.explorers());
+            if (chunk == null) break;
+            if (chunk.generation() == generation) {
+                ClientMapManager.receiveDiskUpdate(chunk.dimension(), chunk.chunkX(), chunk.chunkZ(),
+                    chunk.colors(), chunk.explorers());
+            }
+            if (System.nanoTime() >= deadline) break;
         }
     }
 
