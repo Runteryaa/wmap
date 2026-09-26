@@ -21,6 +21,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Client-side persistent map storage, saved per server/world.
@@ -30,6 +35,19 @@ public class ClientMapStorage {
 
     private static String currentServerId = null;
     private static final Map<String, Map<Long, Set<UUID>>> explorerCache = new HashMap<>();
+    private record PendingKey(Path root, String dimension, long chunkKey) {}
+    private static final class PendingWrite {
+        private int[] colors;
+        private final Set<UUID> explorers = new HashSet<>();
+    }
+    private record RegionKey(Path root, String dimension, int regionX, int regionZ) {}
+    private static final Map<PendingKey, PendingWrite> pendingWrites = new HashMap<>();
+    private static final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "worldmap-client-storage");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static boolean writeScheduled;
 
     /**
      * Call on server join to set the server identifier.
@@ -65,6 +83,7 @@ public class ClientMapStorage {
     }
 
     public static void clearCurrentServer() {
+        flushPendingWrites();
         currentServerId = null;
         explorerCache.clear();
     }
@@ -121,29 +140,153 @@ public class ClientMapStorage {
     /**
      * Save a single chunk's color data to disk.
      */
-    public static synchronized void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
-        if (currentServerId == null) return;
-        int rx = chunkX >> 5;
-        int rz = chunkZ >> 5;
-        int lx = chunkX & 31;
-        int lz = chunkZ & 31;
-        int offset = (lz * 32 + lx) * 1024;
+    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+        saveChunk(dimension, chunkX, chunkZ, colors, explorers, true, true);
+    }
 
-        Path file = getRegionFile(dimension, rx, rz);
+    /** Queue changed map data; disk I/O is coalesced and performed off the render thread. */
+    public static void saveChunk(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers,
+                                 boolean saveColors, boolean saveExplorers) {
+        if (currentServerId == null || (!saveColors && !saveExplorers)) return;
+        Path root = getStorageDir();
+        long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
+        PendingKey key = new PendingKey(root, dimension, chunkKey);
+        synchronized (pendingWrites) {
+            PendingWrite write = pendingWrites.computeIfAbsent(key, ignored -> new PendingWrite());
+            if (saveColors && colors != null) write.colors = colors.clone();
+            if (saveExplorers && explorers != null) write.explorers.addAll(explorers);
+            scheduleWriteLocked();
+        }
+    }
+
+    private static void scheduleWriteLocked() {
+        if (writeScheduled) return;
+        writeScheduled = true;
+        writer.submit(ClientMapStorage::drainPendingWrites);
+    }
+
+    private static void drainPendingWrites() {
+        Map<PendingKey, PendingWrite> batch;
+        synchronized (pendingWrites) {
+            batch = new HashMap<>(pendingWrites);
+            pendingWrites.clear();
+            writeScheduled = false;
+        }
+        Map<RegionKey, List<Map.Entry<PendingKey, PendingWrite>>> byRegion = new HashMap<>();
+        Map<Path, Map<String, List<Map.Entry<PendingKey, PendingWrite>>>> byStorage = new HashMap<>();
+        batch.forEach((key, value) -> {
+            if (value.colors != null) {
+                int chunkX = (int) (key.chunkKey() >> 32);
+                int chunkZ = (int) key.chunkKey();
+                RegionKey region = new RegionKey(key.root(), key.dimension(), chunkX >> 5, chunkZ >> 5);
+                byRegion.computeIfAbsent(region, ignored -> new ArrayList<>()).add(Map.entry(key, value));
+            }
+            if (!value.explorers.isEmpty()) {
+                byStorage.computeIfAbsent(key.root(), ignored -> new HashMap<>())
+                    .computeIfAbsent(key.dimension(), ignored -> new ArrayList<>()).add(Map.entry(key, value));
+            }
+        });
+        Set<PendingKey> failedColors = new HashSet<>();
+        byRegion.forEach((region, entries) -> {
+            if (!writeRegion(region, entries)) entries.forEach(entry -> failedColors.add(entry.getKey()));
+        });
+        Set<PendingKey> failedExplorers = new HashSet<>();
+        byStorage.forEach((root, dimensions) -> dimensions.forEach((dimension, entries) -> {
+            if (!saveExplorerBatch(root, dimension, entries)) entries.forEach(entry -> failedExplorers.add(entry.getKey()));
+        }));
+        if (!failedColors.isEmpty() || !failedExplorers.isEmpty()) {
+            synchronized (pendingWrites) {
+                for (PendingKey key : failedColors) {
+                    PendingWrite source = batch.get(key);
+                    PendingWrite retry = pendingWrites.computeIfAbsent(key, ignored -> new PendingWrite());
+                    if (retry.colors == null) retry.colors = source.colors;
+                }
+                for (PendingKey key : failedExplorers) {
+                    PendingWrite source = batch.get(key);
+                    pendingWrites.computeIfAbsent(key, ignored -> new PendingWrite()).explorers.addAll(source.explorers);
+                }
+                scheduleWriteLocked();
+            }
+        }
+        synchronized (pendingWrites) {
+            if (!pendingWrites.isEmpty()) scheduleWriteLocked();
+        }
+    }
+
+    private static boolean writeRegion(RegionKey region, List<Map.Entry<PendingKey, PendingWrite>> entries) {
+        Path file = region.root().resolve("dim_" + Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(region.dimension().getBytes(StandardCharsets.UTF_8)))
+            .resolve("r." + region.regionX() + "." + region.regionZ() + ".map");
         try {
             Files.createDirectories(file.getParent());
             try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "rw")) {
-                raf.seek(offset);
-                ByteBuffer buf = ByteBuffer.allocate(1024);
-                for (int color : colors) {
-                    buf.putInt(color);
+                for (Map.Entry<PendingKey, PendingWrite> entry : entries) {
+                    int chunkX = (int) (entry.getKey().chunkKey() >> 32);
+                    int chunkZ = (int) entry.getKey().chunkKey();
+                    int offset = ((chunkZ & 31) * 32 + (chunkX & 31)) * 1024;
+                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    for (int color : entry.getValue().colors) buffer.putInt(color);
+                    raf.seek(offset);
+                    raf.write(buffer.array());
                 }
-                raf.write(buf.array());
             }
-        } catch (IOException e) {
-            e.printStackTrace();
+            return true;
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not save map region {}", file, exception);
+            return false;
         }
-        saveExplorers(dimension, chunkX, chunkZ, explorers);
+    }
+
+    private static boolean saveExplorerBatch(Path root, String dimension,
+            List<Map.Entry<PendingKey, PendingWrite>> entries) {
+        Map<Long, Set<UUID>> byChunk = explorerCache.computeIfAbsent(root + "|" + dimension,
+            ignored -> loadExplorers(root.resolve("dim_" + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(dimension.getBytes(StandardCharsets.UTF_8))), dimension));
+        List<long[]> records = new ArrayList<>();
+        Map<Long, Set<UUID>> additions = new HashMap<>();
+        for (Map.Entry<PendingKey, PendingWrite> entry : entries) {
+            long chunkKey = entry.getKey().chunkKey();
+            Set<UUID> known = byChunk.computeIfAbsent(chunkKey, ignored -> new HashSet<>());
+            Set<UUID> queued = additions.computeIfAbsent(chunkKey, ignored -> new HashSet<>());
+            for (UUID explorer : entry.getValue().explorers) {
+                if (!known.contains(explorer) && queued.add(explorer)) {
+                    records.add(new long[] {chunkKey, explorer.getMostSignificantBits(), explorer.getLeastSignificantBits()});
+                }
+            }
+        }
+        if (records.isEmpty()) return true;
+        Path file = root.resolve("dim_" + Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(dimension.getBytes(StandardCharsets.UTF_8))).resolve("explorers.dat");
+        try {
+            Files.createDirectories(file.getParent());
+            try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(file,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND))) {
+                for (long[] record : records) {
+                    output.writeLong(record[0]);
+                    output.writeLong(record[1]);
+                    output.writeLong(record[2]);
+                }
+            }
+            additions.forEach((chunkKey, ids) -> byChunk.get(chunkKey).addAll(ids));
+            return true;
+        } catch (IOException exception) {
+            WorldMapMod.LOGGER.warn("Could not save map explorers for dimension {}", dimension, exception);
+            return false;
+        }
+    }
+
+    /** Wait for queued writes during disconnect/shutdown so data survives process exit. */
+    public static void flushPendingWrites() {
+        try {
+            writer.submit(() -> {
+                synchronized (pendingWrites) {
+                    if (!pendingWrites.isEmpty() && !writeScheduled) scheduleWriteLocked();
+                }
+            }).get(10, TimeUnit.SECONDS);
+            writer.submit(() -> {}).get(10, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            WorldMapMod.LOGGER.warn("Timed out waiting for pending map writes", exception);
+        }
     }
 
     /**
@@ -229,32 +372,6 @@ public class ClientMapStorage {
             }
         } catch (NumberFormatException | IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private static void saveExplorers(String dimension, int chunkX, int chunkZ, Set<UUID> explorers) {
-        if (explorers.isEmpty()) return;
-        long chunkKey = (((long) chunkX) << 32) | (chunkZ & 0xffffffffL);
-        Map<Long, Set<UUID>> byChunk = explorerCache.computeIfAbsent(dimension,
-            key -> loadExplorers(getDimensionDir(key), key));
-        Set<UUID> known = byChunk.computeIfAbsent(chunkKey, ignored -> new HashSet<>());
-        Set<UUID> newlyAdded = new HashSet<>(explorers);
-        newlyAdded.removeAll(known);
-        if (newlyAdded.isEmpty()) return;
-        known.addAll(newlyAdded);
-        Path file = getDimensionDir(dimension).resolve("explorers.dat");
-        try {
-            Files.createDirectories(file.getParent());
-            try (DataOutputStream output = new DataOutputStream(Files.newOutputStream(file,
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND))) {
-                for (UUID explorer : newlyAdded) {
-                    output.writeLong(chunkKey);
-                    output.writeLong(explorer.getMostSignificantBits());
-                    output.writeLong(explorer.getLeastSignificantBits());
-                }
-            }
-        } catch (IOException exception) {
-            WorldMapMod.LOGGER.warn("Could not save map explorers for dimension {}", dimension, exception);
         }
     }
 

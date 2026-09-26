@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Arrays;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import com.runterya.worldmap.network.MapColorReportPayload;
 
@@ -31,10 +32,12 @@ public class ClientMapManager {
     /** Chunks resolved from this client's actual loaded world and tint resources. */
     private static final Set<DimensionChunkKey> locallyResolvedChunks = ConcurrentHashMap.newKeySet();
     private static final Map<DimensionChunkKey, ChunkData> chunkData = new ConcurrentHashMap<>();
+    private static final Map<DimensionChunkKey, int[]> lastReportedColors = new ConcurrentHashMap<>();
     private static int lastNetherLayerY = Integer.MIN_VALUE;
 
     private record DimensionChunkKey(String dimension, long chunkKey) {}
     private record ChunkData(int[] colors, Set<UUID> explorers) {}
+    public record UpdateResult(boolean colorsChanged, boolean explorersChanged, boolean serverColorsApplied) {}
 
     /** Clear all in-memory map data (call on world disconnect). */
     public static void clear() {
@@ -45,6 +48,7 @@ public class ClientMapManager {
         pendingChunkSet.clear();
         locallyResolvedChunks.clear();
         chunkData.clear();
+        lastReportedColors.clear();
         lastNetherLayerY = Integer.MIN_VALUE;
     }
 
@@ -155,22 +159,36 @@ public class ClientMapManager {
             ? view.storageDimension(dimension, layerY)
             : view.storageDimension(dimension);
         int[] colors = ClientMapColorExtractor.extract(chunk, view, layerY);
-        receiveLocalUpdate(mapDimension, chunkX, chunkZ, colors);
+        UpdateResult result = receiveLocalUpdate(mapDimension, chunkX, chunkZ, colors);
         ClientMapStorage.saveChunk(mapDimension, chunkX, chunkZ, colors,
-            getExplorers(mapDimension, chunkX, chunkZ));
+            getExplorers(mapDimension, chunkX, chunkZ), result.colorsChanged(), result.explorersChanged());
 
         if (ClientPlayNetworking.canSend(MapColorReportPayload.ID)) {
-            ClientPlayNetworking.send(new MapColorReportPayload(mapDimension, chunkX, chunkZ, colors));
+            DimensionChunkKey key = new DimensionChunkKey(mapDimension, chunkKey(chunkX, chunkZ));
+            int[] previousReport = lastReportedColors.put(key, colors.clone());
+            if (previousReport == null || !Arrays.equals(previousReport, colors)) {
+                ClientPlayNetworking.send(new MapColorReportPayload(mapDimension, chunkX, chunkZ, colors));
+            }
         }
     }
 
-    public static void receiveUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+    public static UpdateResult receiveUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
         DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
+        ChunkData previous = chunkData.get(key);
         ChunkData data = new ChunkData(colors.clone(), Set.copyOf(explorers));
         chunkData.put(key, data);
-        if (isVisible(data.explorers())) {
-            renderChunk(dimension, chunkX, chunkZ, data.colors());
+        boolean colorsChanged = previous == null || !Arrays.equals(previous.colors(), data.colors());
+        boolean explorersChanged = previous == null || !previous.explorers().equals(data.explorers());
+        boolean wasVisible = previous != null && isVisible(previous.explorers());
+        boolean visible = isVisible(data.explorers());
+        if (colorsChanged || wasVisible != visible) {
+            if (visible) {
+                renderChunk(dimension, chunkX, chunkZ, data.colors());
+            } else if (wasVisible) {
+                renderChunk(dimension, chunkX, chunkZ, new int[256]);
+            }
         }
+        return new UpdateResult(colorsChanged, explorersChanged, false);
     }
 
     private static void renderChunk(String dimension, int chunkX, int chunkZ, int[] colors) {
@@ -184,31 +202,31 @@ public class ClientMapManager {
     }
 
     /** Apply a locally extracted chunk and protect it from stale network copies. */
-    public static void receiveLocalUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
+    public static UpdateResult receiveLocalUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
         DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
         locallyResolvedChunks.add(key);
         Set<UUID> explorers = new java.util.HashSet<>(getExplorers(dimension, chunkX, chunkZ));
         if (Minecraft.getInstance().player != null) explorers.add(Minecraft.getInstance().player.getUUID());
-        receiveUpdate(dimension, chunkX, chunkZ, colors, explorers);
+        return receiveUpdate(dimension, chunkX, chunkZ, colors, explorers);
     }
 
     /**
      * Server data fills unexplored areas, but a loaded chunk's local extraction
      * is newer and must not be replaced by a delayed packet from another source.
      */
-    public static boolean receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
+    public static UpdateResult receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors) {
         return receiveServerUpdate(dimension, chunkX, chunkZ, colors, Set.of());
     }
 
-    public static boolean receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
+    public static UpdateResult receiveServerUpdate(String dimension, int chunkX, int chunkZ, int[] colors, Set<UUID> explorers) {
         DimensionChunkKey key = new DimensionChunkKey(dimension, chunkKey(chunkX, chunkZ));
         ChunkData previous = chunkData.get(key);
         Set<UUID> mergedExplorers = new java.util.HashSet<>(previous == null ? Set.of() : previous.explorers());
         mergedExplorers.addAll(explorers);
         boolean useServerColor = !locallyResolvedChunks.contains(key);
         int[] mergedColors = useServerColor || previous == null ? colors : previous.colors();
-        receiveUpdate(dimension, chunkX, chunkZ, mergedColors, mergedExplorers);
-        return useServerColor;
+        UpdateResult applied = receiveUpdate(dimension, chunkX, chunkZ, mergedColors, mergedExplorers);
+        return new UpdateResult(applied.colorsChanged(), applied.explorersChanged(), useServerColor);
     }
 
     public static Set<UUID> getExplorers(String dimension, int chunkX, int chunkZ) {
